@@ -15,6 +15,14 @@ impl Verifier {
             root_cert: Arc::new(root_cert),
         }
     }
+
+    pub fn new_aws() -> Verifier {
+        let root_cert = include_bytes!("../certs/aws_root.der");
+        Verifier {
+            // TODO: can we avoid copying static data into an Arc?
+            root_cert: Arc::new(root_cert.to_vec()),
+        }
+    }
 }
 
 impl AttestationVerifier for Verifier {

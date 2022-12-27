@@ -17,9 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = CliArgs::parse();
     log::info!("Requesting page from: {}", args.fetch_url);
 
-    let root_cert = include_bytes!("./aws_root.der");
-
-    let verifier = Verifier::new(root_cert.to_vec());
+    let verifier = Verifier::new_aws();
     let client_builder = AttestedBuilder::new(verifier);
     let client = client_builder.http_client()?;
 
