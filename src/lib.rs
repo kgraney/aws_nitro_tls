@@ -1,8 +1,10 @@
 use openssl::ssl::SslAcceptorBuilder;
 use std::path::PathBuf;
 
-mod attestation;
 pub mod client;
+pub mod verifier;
+
+mod attestation;
 mod constants;
 mod nsm;
 mod server;

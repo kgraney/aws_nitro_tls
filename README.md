@@ -31,7 +31,8 @@ This library is a work-in-progress.
 ```rust
 use hyper::body::HttpBody as _;
 use tokio::io::{stdout, AsyncWriteExt as _};
-use aws_nitro_tls::client::{Verifier, AttestedBuilder};
+use aws_nitro_tls::client::AttestedBuilder;
+use aws_nitro_tls::verifier::Verifier;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
