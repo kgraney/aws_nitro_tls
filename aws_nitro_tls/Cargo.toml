@@ -15,3 +15,4 @@ hyper = { version = "0.14", features = ["full"] }
 log = "0.4"
 openssl = "0.10.45"
 serde_bytes = "0.11.7"
+thiserror = "1.0.38"

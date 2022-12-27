@@ -1,11 +1,11 @@
 use crate::attestation::AttestationVerifier;
 use crate::constants;
+use crate::error::Error;
 use crate::util::SslRefHelper as _;
 use crate::verifier::Verifier;
 use hyper::client::HttpConnector;
 use hyper::Client;
 use hyper_openssl::HttpsConnector;
-use openssl::error::ErrorStack;
 use openssl::ex_data::Index;
 use openssl::hash::MessageDigest;
 use openssl::ssl::{
@@ -28,7 +28,7 @@ impl AttestedBuilder {
 
     pub fn http_client(
         &self,
-    ) -> Result<hyper::Client<HttpsConnector<HttpConnector>, hyper::body::Body>, ErrorStack> {
+    ) -> Result<hyper::Client<HttpsConnector<HttpConnector>, hyper::body::Body>, Error> {
         let mut http = HttpConnector::new();
         http.enforce_http(false);
 
@@ -36,7 +36,7 @@ impl AttestedBuilder {
         Ok(Client::builder().build::<_, hyper::Body>(https))
     }
 
-    pub fn ssl_connector_builder(&self) -> Result<SslConnectorBuilder, ErrorStack> {
+    pub fn ssl_connector_builder(&self) -> Result<SslConnectorBuilder, Error> {
         let mut builder = SslConnector::builder(SslMethod::tls_client())?;
         builder.set_verify(openssl::ssl::SslVerifyMode::PEER);
 
@@ -123,23 +123,23 @@ fn verify_cert_fingerprint(
     let ssl_idx = X509StoreContext::ssl_idx().expect("ssl_idx invalid");
     let ssl_ctx = chain.ex_data(ssl_idx).expect("error getting ssl_idx");
 
-    let expected_fingerprint = match ssl_ctx.ex_data(fingerprint_idx) {
+    let doc_fingerprint = match ssl_ctx.ex_data(fingerprint_idx) {
         Some(bytes) => bytes,
         None => return false,
     };
 
-    let fingerprint = chain
+    let cert_fingerprint = chain
         .current_cert()
         .and_then(|x| Some(x.digest(MessageDigest::sha256())));
-    let fingerprint = match fingerprint {
+    let cert_fingerprint = match cert_fingerprint {
         Some(Ok(bytes)) => bytes,
         Some(Err(_)) => return false,
         None => return false,
     };
 
-    if *fingerprint == *expected_fingerprint {
+    if *cert_fingerprint == *doc_fingerprint {
         return result;
     }
-    log::debug!("Fingerprint mismatch!");
+    log::debug!("Fingerprint mismatch! doc:{doc_fingerprint:?} cert:{cert_fingerprint:?}");
     false
 }

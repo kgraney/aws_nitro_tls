@@ -1,8 +1,9 @@
+use crate::error::Error;
 use openssl::hash::{DigestBytes, MessageDigest};
 
 pub trait SslRefHelper {
     fn client_nonce(&self) -> Vec<u8>;
-    fn cert_fingerprint(&self) -> DigestBytes;
+    fn cert_fingerprint(&self) -> Result<DigestBytes, Error>;
 }
 
 impl SslRefHelper for openssl::ssl::SslRef {
@@ -13,12 +14,10 @@ impl SslRefHelper for openssl::ssl::SslRef {
         client_random
     }
 
-    fn cert_fingerprint(&self) -> DigestBytes {
-        let digest = self
+    fn cert_fingerprint(&self) -> Result<DigestBytes, Error> {
+        Ok(self
             .certificate()
-            .and_then(|x| Some(x.digest(MessageDigest::sha256())))
-            .unwrap()
-            .unwrap();
-        digest
+            .ok_or(Error::NoCertificateKnown("can't compute digest".to_owned()))?
+            .digest(MessageDigest::sha256())?)
     }
 }

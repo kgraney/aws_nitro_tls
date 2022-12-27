@@ -1,5 +1,6 @@
 use crate::attestation::AttestationProvider;
 use crate::constants;
+use crate::error::Error;
 use crate::util::SslRefHelper as _;
 use openssl::ssl::{
     ExtensionContext, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
@@ -35,7 +36,7 @@ where
         &self,
         fullchain: &PathBuf,
         private_key: &PathBuf,
-    ) -> std::io::Result<SslAcceptorBuilder> {
+    ) -> Result<SslAcceptorBuilder, Error> {
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         acceptor.clear_options(SslOptions::NO_TLSV1_3);
         acceptor.clear_options(SslOptions::NO_TICKET);
@@ -68,7 +69,10 @@ fn add_server_attestation_cb<T: AttestationProvider>(
     if ctx == ExtensionContext::TLS1_3_ENCRYPTED_EXTENSIONS {
         let client_random = r.client_nonce();
         // TODO: avoid copy?
-        let cert_fingerprint = r.cert_fingerprint().to_vec();
+        let cert_fingerprint = r
+            .cert_fingerprint()
+            .or(Err(SslAlert::DECODE_ERROR))?
+            .to_vec();
         let doc = provider
             .attestation_doc(Some(client_random), None, Some(cert_fingerprint))
             .unwrap();

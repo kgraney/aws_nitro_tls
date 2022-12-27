@@ -6,6 +6,7 @@ pub mod verifier;
 
 mod attestation;
 mod constants;
+mod error;
 mod nsm;
 mod server;
 mod util;
@@ -23,7 +24,7 @@ impl ServerBuilder {
         &self,
         fullchain: &PathBuf,
         private_key: &PathBuf,
-    ) -> std::io::Result<SslAcceptorBuilder> {
+    ) -> Result<SslAcceptorBuilder, error::Error> {
         self.0.ssl_acceptor_builder(fullchain, private_key)
     }
 }
