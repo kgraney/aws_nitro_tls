@@ -2,4 +2,5 @@
 members = [
     "aws_nitro_tls",
     "example_client",
+    "example_server",
 ]
