@@ -1,6 +1,8 @@
 use crate::attestation::AttestationProvider;
 use crate::constants;
 use crate::error::Error;
+use crate::nsm::NsmAttestationProvider;
+use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
 use openssl::ssl::{
     ExtensionContext, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
@@ -11,6 +13,9 @@ use std::marker::{PhantomPinned, Send, Sync};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub type NsmServerBuilder = AttestedBuilder<NsmAttestationProvider>;
+pub type LocalServerBuilder = AttestedBuilder<FakeAttestationProvider>;
+
 pub struct AttestedBuilder<T>
 where
     T: AttestationProvider,
@@ -19,19 +24,23 @@ where
     _not_unpin: PhantomPinned,
 }
 
-impl<T> AttestedBuilder<T>
+impl<T> Default for AttestedBuilder<T>
 where
-    T: AttestationProvider,
-    T: Default,
-    T: Send + Sync + 'static,
+    T: AttestationProvider + Default,
 {
-    pub fn default() -> AttestedBuilder<T> {
+    fn default() -> Self {
         AttestedBuilder {
             attestation_provider: Arc::new(T::default()),
             _not_unpin: PhantomPinned::default(),
         }
     }
+}
 
+impl<T> AttestedBuilder<T>
+where
+    T: AttestationProvider,
+    T: Send + Sync + 'static,
+{
     pub fn ssl_acceptor_builder(
         &self,
         fullchain: &PathBuf,

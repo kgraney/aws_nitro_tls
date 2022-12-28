@@ -1,33 +1,13 @@
-use openssl::ssl::SslAcceptorBuilder;
-use std::path::PathBuf;
-
 pub mod client;
+pub mod server;
 pub mod verifier;
 
 mod attestation;
 mod constants;
 mod error;
 mod nsm;
-mod server;
+mod nsm_fake;
 mod util;
-
-pub struct ServerBuilder(server::AttestedBuilder<nsm::NsmAttestationProvider>);
-
-impl Default for ServerBuilder {
-    fn default() -> ServerBuilder {
-        ServerBuilder(server::AttestedBuilder::<nsm::NsmAttestationProvider>::default())
-    }
-}
-
-impl ServerBuilder {
-    pub fn ssl_acceptor_builder(
-        &self,
-        fullchain: &PathBuf,
-        private_key: &PathBuf,
-    ) -> Result<SslAcceptorBuilder, error::Error> {
-        self.0.ssl_acceptor_builder(fullchain, private_key)
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -13,7 +13,7 @@ pub struct NsmAttestationProvider {
 }
 
 impl Default for NsmAttestationProvider {
-    fn default() -> NsmAttestationProvider {
+    fn default() -> Self {
         NsmAttestationProvider {
             nsm_fd: aws_nsm::driver::nsm_init(),
             _not_unpin: PhantomPinned::default(),
