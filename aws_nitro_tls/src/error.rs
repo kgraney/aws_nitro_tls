@@ -24,7 +24,8 @@ pub enum Error {
 }
 
 impl From<Error> for SslAlert {
-    fn from(_: Error) -> Self {
+    fn from(e: Error) -> Self {
+        log::info!("Converting error into generic SslAlert: {}", e);
         SslAlert::DECODE_ERROR
     }
 }

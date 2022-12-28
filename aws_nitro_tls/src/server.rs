@@ -73,9 +73,7 @@ fn add_server_attestation_cb<T: AttestationProvider>(
             .cert_fingerprint()
             .or(Err(SslAlert::DECODE_ERROR))?
             .to_vec();
-        let doc = provider
-            .attestation_doc(Some(client_random), None, Some(cert_fingerprint))
-            .unwrap();
+        let doc = provider.attestation_doc(Some(client_random), None, Some(cert_fingerprint))?;
         return Ok(Some(doc));
     }
     Ok(None)
