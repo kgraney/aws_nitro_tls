@@ -2,6 +2,7 @@ mod aws_nsm {
     pub use aws_nitro_enclaves_nsm_api::*;
 }
 use crate::attestation::AttestationProvider;
+use crate::error::Error;
 use serde_bytes::ByteBuf;
 use std::marker::PhantomPinned;
 
@@ -26,7 +27,7 @@ impl AttestationProvider for NsmAttestationProvider {
         nonce: Option<Vec<u8>>,
         user_data: Option<Vec<u8>>,
         public_key: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, &'static str> {
+    ) -> Result<Vec<u8>, Error> {
         let nsm_req = aws_nsm::api::Request::Attestation {
             nonce: nonce.and_then(|x| Some(ByteBuf::from(x))),
             user_data: user_data.and_then(|x| Some(ByteBuf::from(x))),
@@ -37,6 +38,6 @@ impl AttestationProvider for NsmAttestationProvider {
         {
             return Ok(document);
         }
-        Err("Error in NSM request")
+        Err(Error::NsmError())
     }
 }

@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Nitro Security Module error")]
+    NsmError(),
+
     #[error("No certificate available: {0}")]
     NoCertificateKnown(String),
 

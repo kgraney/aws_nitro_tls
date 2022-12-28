@@ -6,7 +6,7 @@ pub trait AttestationProvider {
         nonce: Option<Vec<u8>>,
         user_data: Option<Vec<u8>>,
         public_key: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, &'static str>;
+    ) -> Result<Vec<u8>, Error>;
 }
 
 pub struct SessionValues {
