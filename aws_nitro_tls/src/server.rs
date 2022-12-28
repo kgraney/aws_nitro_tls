@@ -6,9 +6,9 @@ use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
 use openssl::ssl::{
     ExtensionContext, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
-    SslOptions, SslRef, SslVersion,
+    SslOptions, SslRef, SslVerifyMode, SslVersion,
 };
-use openssl::x509::X509Ref;
+use openssl::x509::{X509Ref, X509StoreContextRef};
 use std::marker::{PhantomPinned, Send, Sync};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,6 +21,10 @@ where
     T: AttestationProvider,
 {
     attestation_provider: Arc<T>,
+
+    // If true require that connecting clients present a valid attestation for themself.
+    verify_client_attestation: bool,
+
     _not_unpin: PhantomPinned,
 }
 
@@ -31,6 +35,7 @@ where
     fn default() -> Self {
         AttestedBuilder {
             attestation_provider: Arc::new(T::default()),
+            verify_client_attestation: false,
             _not_unpin: PhantomPinned::default(),
         }
     }
@@ -64,6 +69,19 @@ where
             add_cb,
             parse_server_attestation_cb,
         )?;
+
+        if self.verify_client_attestation {
+            let cert_cb = |result: bool, _chain: &mut X509StoreContextRef| -> bool {
+                // TODO: verify the client's attestation document (and also their cert?)
+                log::debug!("verify callback: {}", result);
+                true
+            };
+            acceptor.set_verify_callback(
+                SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT,
+                cert_cb,
+            );
+        }
+
         Ok(acceptor)
     }
 }
@@ -85,6 +103,14 @@ fn add_server_attestation_cb<T: AttestationProvider>(
         let doc = provider.attestation_doc(Some(client_random), None, Some(cert_fingerprint))?;
         return Ok(Some(doc));
     }
+
+    // When we send certificate requests to clients we include the extension requesting,
+    // additionally, an attestation document.
+    if ctx == ExtensionContext::TLS1_3_CERTIFICATE_REQUEST {
+        // TODO: add a nonce here? option to include other data?
+        return Ok(Some(vec![0xff]));
+    }
+
     Ok(None)
 }
 
