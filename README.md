@@ -29,23 +29,30 @@ This library is a work-in-progress.
 ### Client usage
 
 ```rust
-use hyper::body::HttpBody as _;
-use tokio::io::{stdout, AsyncWriteExt as _};
 use aws_nitro_tls::client::AttestedBuilder;
 use aws_nitro_tls::verifier::Verifier;
+use clap::Parser;
+use hyper::body::HttpBody as _;
+use tokio::io::{stdout, AsyncWriteExt as _};
+
+#[derive(Parser, Debug)]
+struct CliArgs {
+    fetch_url: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    env_logger::init();
     openssl_probe::init_ssl_cert_env_vars();
 
-    let root_cert = include_bytes!("./aws_root.der");
+    let args = CliArgs::parse();
+    log::info!("Requesting page from: {}", args.fetch_url);
 
-    let verifier = Verifier::new(root_cert.to_vec());
+    let verifier = Verifier::new_aws();
     let client_builder = AttestedBuilder::new(verifier);
     let client = client_builder.http_client()?;
 
-    let uri = "https://example.com/some_path".parse()?;
-    let mut resp = client.get(uri).await?;
+    let mut resp = client.get(args.fetch_url.parse()?).await?;
     log::info!("Response: {}", resp.status());
     while let Some(chunk) = resp.body_mut().data().await {
         stdout().write_all(&chunk?).await?;
@@ -59,21 +66,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 ### Server usage
 
 ```rust
-use actix_web::{App, HttpServer};
-use aws_nitro_tls::ServerBuilder;
+use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+use clap::Parser;
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+struct CliArgs {
+    fullchain: PathBuf,
+    private_key: PathBuf,
+}
+
+async fn test(_: HttpRequest) -> impl Responder {
+    format!("some test endpoint")
+}
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    let tls_builder = ServerBuilder::default();
-    HttpServer::new(move || App::new().route(...)))
+    env_logger::init();
+
+    let args = CliArgs::parse();
+
+    let tls_builder = aws_nitro_tls::ServerBuilder::default();
+
+    log::info!("Starting web server...");
+    HttpServer::new(move || App::new().route("/test", web::get().to(test)))
         .bind(("localhost", 8080))?
         .bind_openssl(
             "localhost:8443",
-            tls_builder.ssl_acceptor_builder(fullchain, private_key)?,
+            tls_builder
+                .ssl_acceptor_builder(&args.fullchain, &args.private_key)
+                .unwrap(),
         )?
         .run()
-        .await();
+        .await
 }
-
 ```
 
