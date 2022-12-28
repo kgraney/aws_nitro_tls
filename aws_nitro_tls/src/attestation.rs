@@ -7,6 +7,8 @@ pub trait AttestationProvider {
         user_data: Option<Vec<u8>>,
         public_key: Option<Vec<u8>>,
     ) -> Result<Vec<u8>, Error>;
+
+    fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, Error>;
 }
 
 pub struct SessionValues {

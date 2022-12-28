@@ -1,57 +1,38 @@
-use crate::attestation::{AttestationVerifier, SessionValues};
+use crate::attestation::{AttestationProvider, AttestationVerifier, SessionValues};
 use crate::error::Error;
-use aws_nitro_enclaves_attestation::NitroAdDoc;
+use crate::nsm::NsmAttestationProvider;
+use crate::nsm_fake::FakeAttestationProvider;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct Verifier {
-    // The AWS root certificate.
-    root_cert: Arc<Vec<u8>>,
+    provider: Arc<dyn AttestationProvider + Send + Sync>,
+
+    // True if the server's certificate should be validated as normal (hostname, CA, etc.)
+    validate_cert: bool,
 }
 
 impl Verifier {
-    pub fn new(root_cert: Vec<u8>) -> Verifier {
+    pub fn new_fake() -> Verifier {
         Verifier {
-            root_cert: Arc::new(root_cert),
+            provider: Arc::new(FakeAttestationProvider::default()),
+            validate_cert: false,
         }
     }
 
     pub fn new_aws() -> Verifier {
-        let root_cert = include_bytes!("../certs/aws_root.der");
         Verifier {
-            // TODO: can we avoid copying static data into an Arc?
-            root_cert: Arc::new(root_cert.to_vec()),
+            provider: Arc::new(NsmAttestationProvider::default()),
+            validate_cert: true,
         }
+    }
+
+    pub fn should_validate_cert(&self) -> bool {
+        self.validate_cert
     }
 }
 
 impl AttestationVerifier for Verifier {
     fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, Error> {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        if let Ok(contents) = NitroAdDoc::from_bytes(&doc, self.root_cert.as_ref(), ts) {
-            if let Ok(json) = contents.to_json() {
-                log::debug!("json attestation: {json:?}");
-            }
-
-            // TODO: Verify PCRs
-
-            let nonce = contents
-                .payload_ref
-                .nonce
-                .ok_or(Error::ClientNonceError("none set".to_owned()))?;
-            let fingerprint = contents
-                .payload_ref
-                .public_key
-                .ok_or(Error::CertificateFingerprintError("none set".to_owned()))?;
-
-            return Ok(SessionValues {
-                client_nonce: nonce.into_vec(),
-                cert_fingerprint: fingerprint.into_vec(),
-            });
-        }
-        Err(Error::FailedToParseAttestation())
+        self.provider.verify_doc(doc)
     }
 }

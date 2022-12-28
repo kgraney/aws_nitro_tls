@@ -64,8 +64,9 @@ impl AttestedBuilder {
             parse_cb,
         )?;
 
+        let cert_cb_verifier = self.verifier.clone();
         let cert_cb = move |result: bool, chain: &mut X509StoreContextRef| -> bool {
-            verify_cert_fingerprint(fingerprint_idx.clone(), result, chain)
+            verify_cert_fingerprint(&cert_cb_verifier, fingerprint_idx.clone(), result, chain)
         };
         builder.set_verify_callback(SslVerifyMode::PEER, cert_cb);
         Ok(builder)
@@ -108,6 +109,7 @@ fn parse_client_attestation_cb(
 }
 
 fn verify_cert_fingerprint(
+    verifier: &Arc<Verifier>,
     fingerprint_idx: Index<Ssl, Vec<u8>>,
     result: bool,
     chain: &mut X509StoreContextRef,
@@ -138,7 +140,11 @@ fn verify_cert_fingerprint(
     };
 
     if *cert_fingerprint == *doc_fingerprint {
-        return result;
+        if verifier.should_validate_cert() {
+            return result;
+        } else {
+            return true;
+        }
     }
     log::debug!("Fingerprint mismatch! doc:{doc_fingerprint:?} cert:{cert_fingerprint:?}");
     false

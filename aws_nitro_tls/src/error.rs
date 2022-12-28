@@ -21,6 +21,12 @@ pub enum Error {
 
     #[error("Certificate fingerprint error: {0}")]
     CertificateFingerprintError(String),
+
+    #[error("Error serializing CBOR message")]
+    CborSerializeError(),
+
+    #[error("Error deserializing CBOR message")]
+    CborDeserializeError(),
 }
 
 impl From<Error> for SslAlert {
