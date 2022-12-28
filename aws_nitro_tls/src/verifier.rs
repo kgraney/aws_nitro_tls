@@ -1,11 +1,11 @@
-use crate::attestation::{AttestationProvider, AttestationVerifier, SessionValues};
+use crate::attestation::{AttestationVerifier, SessionValues};
 use crate::error::Error;
 use crate::nsm::NsmAttestationProvider;
 use crate::nsm_fake::FakeAttestationProvider;
 use std::sync::Arc;
 
 pub struct Verifier {
-    provider: Arc<dyn AttestationProvider + Send + Sync>,
+    provider: Arc<dyn AttestationVerifier + Send + Sync>,
 
     // True if the server's certificate should be validated as normal (hostname, CA, etc.)
     validate_cert: bool,

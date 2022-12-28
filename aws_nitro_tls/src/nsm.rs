@@ -1,7 +1,7 @@
 mod aws_nsm {
     pub use aws_nitro_enclaves_nsm_api::*;
 }
-use crate::attestation::{AttestationProvider, SessionValues};
+use crate::attestation::{AttestationProvider, AttestationVerifier, SessionValues};
 use crate::error::Error;
 use aws_nitro_enclaves_attestation::NitroAdDoc;
 use serde_bytes::ByteBuf;
@@ -50,7 +50,9 @@ impl AttestationProvider for NsmAttestationProvider {
         }
         Err(Error::NsmError())
     }
+}
 
+impl AttestationVerifier for NsmAttestationProvider {
     fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, Error> {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)

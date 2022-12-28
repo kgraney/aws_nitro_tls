@@ -1,4 +1,4 @@
-use crate::attestation::{AttestationProvider, SessionValues};
+use crate::attestation::{AttestationProvider, AttestationVerifier, SessionValues};
 use crate::error::Error;
 use serde_derive::{Deserialize, Serialize};
 
@@ -25,7 +25,9 @@ impl AttestationProvider for FakeAttestationProvider {
         let bytes = serde_cbor::to_vec(&doc).or(Err(Error::CborSerializeError()))?;
         Ok(bytes)
     }
+}
 
+impl AttestationVerifier for FakeAttestationProvider {
     fn verify_doc(&self, bytes: &[u8]) -> Result<SessionValues, Error> {
         let doc: FakeAttestationDoc =
             serde_cbor::from_reader(bytes).or(Err(Error::CborDeserializeError()))?;
