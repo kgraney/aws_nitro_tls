@@ -1,4 +1,4 @@
-use openssl::ssl::SslAlert;
+use crate::error::Error;
 
 pub trait AttestationProvider {
     fn attestation_doc(
@@ -15,5 +15,5 @@ pub struct SessionValues {
 }
 
 pub trait AttestationVerifier {
-    fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, SslAlert>;
+    fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, Error>;
 }
