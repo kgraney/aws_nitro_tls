@@ -13,6 +13,9 @@ use openssl::ssl::{
     SslVerifyMode,
 };
 use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
+use std::env;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::Arc;
 
 pub struct AttestedBuilder {
@@ -69,8 +72,27 @@ impl AttestedBuilder {
             verify_cert_fingerprint(&cert_cb_verifier, fingerprint_idx.clone(), result, chain)
         };
         builder.set_verify_callback(SslVerifyMode::PEER, cert_cb);
+
+        if let Ok(keylog_file) = env::var("SSLKEYLOGFILE") {
+            log_secrets(&mut builder, keylog_file);
+        }
+
         Ok(builder)
     }
+}
+
+// Log TLS premaster/master secrets for decrypting sessions with Wireshark.
+fn log_secrets(builder: &mut SslConnectorBuilder, keylog_file: String) {
+    log::warn!("TLS secrets are being logged to: {}", keylog_file);
+    builder.set_keylog_callback(move |_: &SslRef, s: &str| {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&keylog_file)
+            .unwrap();
+        file.write_all(s.as_bytes()).unwrap();
+        file.write_all("\n".as_bytes()).unwrap();
+    });
 }
 
 fn add_client_attestation_cb(
