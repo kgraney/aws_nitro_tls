@@ -16,6 +16,14 @@ use std::sync::Arc;
 pub type NsmServerBuilder = AttestedBuilder<NsmAttestationProvider>;
 pub type LocalServerBuilder = AttestedBuilder<FakeAttestationProvider>;
 
+pub trait AcceptorBuilder {
+    fn ssl_acceptor_builder(
+        &self,
+        fullchain: &PathBuf,
+        private_key: &PathBuf,
+    ) -> Result<SslAcceptorBuilder, Error>;
+}
+
 pub struct AttestedBuilder<T>
 where
     T: AttestationProvider,
@@ -43,10 +51,24 @@ where
 
 impl<T> AttestedBuilder<T>
 where
+    T: AttestationProvider + Default,
+{
+    // TODO: make construction of this more idiomatic & obvious.
+    pub fn new(verify_client_attestation: bool) -> Self {
+        AttestedBuilder {
+            attestation_provider: Arc::new(T::default()),
+            verify_client_attestation: verify_client_attestation,
+            _not_unpin: PhantomPinned::default(),
+        }
+    }
+}
+
+impl<T> AcceptorBuilder for AttestedBuilder<T>
+where
     T: AttestationProvider,
     T: Send + Sync + 'static,
 {
-    pub fn ssl_acceptor_builder(
+    fn ssl_acceptor_builder(
         &self,
         fullchain: &PathBuf,
         private_key: &PathBuf,
