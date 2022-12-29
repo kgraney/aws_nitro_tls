@@ -21,4 +21,3 @@ pub struct SessionValues {
     pub client_nonce: Vec<u8>,
     pub cert_fingerprint: Vec<u8>,
 }
-
