@@ -1,4 +1,4 @@
-use aws_nitro_tls::client::AttestedBuilder;
+use aws_nitro_tls::client::{ConnectorBuilder, LocalBuilder, NsmBuilder};
 use aws_nitro_tls::verifier::Verifier;
 use clap::Parser;
 use hyper::body::HttpBody as _;
@@ -23,8 +23,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         false => Verifier::new_aws(),
     };
 
-    let client_builder = AttestedBuilder::new(verifier);
-    let client = client_builder.http_client()?;
+    let builder: Box<dyn ConnectorBuilder> = match args.no_nsm {
+        true => Box::new(LocalBuilder::new(verifier)),
+        false => Box::new(NsmBuilder::new(verifier)),
+    };
+
+    let client = builder.http_client()?;
 
     log::info!("Requesting page from: {}", args.fetch_url);
     let mut resp = client.get(args.fetch_url.parse()?).await?;

@@ -1,6 +1,8 @@
-use crate::attestation::AttestationVerifier;
+use crate::attestation::{AttestationProvider, AttestationVerifier};
 use crate::constants;
 use crate::error::Error;
+use crate::nsm::NsmAttestationProvider;
+use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
 use crate::verifier::Verifier;
 use hyper::client::HttpConnector;
@@ -9,8 +11,8 @@ use hyper_openssl::HttpsConnector;
 use openssl::ex_data::Index;
 use openssl::hash::MessageDigest;
 use openssl::ssl::{
-    ExtensionContext, Ssl, SslAlert, SslConnector, SslConnectorBuilder, SslMethod, SslRef,
-    SslVerifyMode,
+    ExtensionContext, Ssl, SslAlert, SslConnector, SslConnectorBuilder, SslFiletype, SslMethod,
+    SslRef, SslVerifyMode,
 };
 use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
 use std::env;
@@ -18,18 +20,43 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Arc;
 
-pub struct AttestedBuilder {
+pub type NsmBuilder = AttestedBuilder<NsmAttestationProvider>;
+pub type LocalBuilder = AttestedBuilder<FakeAttestationProvider>;
+
+pub trait ConnectorBuilder {
+    fn ssl_connector_builder(&self) -> Result<SslConnectorBuilder, Error>;
+    fn http_client(
+        &self,
+    ) -> Result<hyper::Client<HttpsConnector<HttpConnector>, hyper::body::Body>, Error>;
+}
+
+pub struct AttestedBuilder<T>
+where
+    T: AttestationProvider,
+{
+    provider: Arc<T>,
     verifier: Arc<Verifier>,
 }
 
-impl AttestedBuilder {
-    pub fn new(verifier: Verifier) -> AttestedBuilder {
+impl<T> AttestedBuilder<T>
+where
+    T: AttestationProvider,
+    T: Default,
+{
+    pub fn new(verifier: Verifier) -> Self {
         AttestedBuilder {
+            provider: Arc::new(T::default()),
             verifier: Arc::new(verifier),
         }
     }
+}
 
-    pub fn http_client(
+impl<T> ConnectorBuilder for AttestedBuilder<T>
+where
+    T: AttestationProvider,
+    T: Send + Sync + 'static,
+{
+    fn http_client(
         &self,
     ) -> Result<hyper::Client<HttpsConnector<HttpConnector>, hyper::body::Body>, Error> {
         let mut http = HttpConnector::new();
@@ -39,7 +66,7 @@ impl AttestedBuilder {
         Ok(Client::builder().build::<_, hyper::Body>(https))
     }
 
-    pub fn ssl_connector_builder(&self) -> Result<SslConnectorBuilder, Error> {
+    fn ssl_connector_builder(&self) -> Result<SslConnectorBuilder, Error> {
         let mut builder = SslConnector::builder(SslMethod::tls_client())?;
         builder.set_verify(openssl::ssl::SslVerifyMode::PEER);
 
@@ -60,10 +87,16 @@ impl AttestedBuilder {
             )
         };
 
+        let add_cb_provider = self.provider.clone();
+        let add_cb =
+            move |r: &mut SslRef, ctx: ExtensionContext, cert: Option<(usize, &X509Ref)>| {
+                add_client_attestation_cb(&add_cb_provider, r, ctx, cert)
+            };
+
         builder.add_custom_ext(
             constants::EXTENSION_TYPE_VAL,
             constants::extension_context(),
-            add_client_attestation_cb,
+            add_cb,
             parse_cb,
         )?;
 
@@ -72,6 +105,10 @@ impl AttestedBuilder {
             verify_cert_fingerprint(&cert_cb_verifier, fingerprint_idx.clone(), result, chain)
         };
         builder.set_verify_callback(SslVerifyMode::PEER, cert_cb);
+
+        // TODO: use a better cert here, or at least a correct path.
+        builder.set_private_key_file("./example_client/certs/key.pem", SslFiletype::PEM)?;
+        builder.set_certificate_chain_file("./example_client/certs/cert.pem")?;
 
         if let Ok(keylog_file) = env::var("SSLKEYLOGFILE") {
             log_secrets(&mut builder, keylog_file);
@@ -95,17 +132,27 @@ fn log_secrets(builder: &mut SslConnectorBuilder, keylog_file: String) {
     });
 }
 
-fn add_client_attestation_cb(
-    _r: &mut SslRef,
+fn add_client_attestation_cb<T: AttestationProvider>(
+    provider: &Arc<T>,
+    r: &mut SslRef,
     ctx: ExtensionContext,
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<Option<Vec<u8>>, SslAlert> {
     log::debug!("add attestation extension callback: {ctx:?}");
-    match ctx {
+    if ctx == ExtensionContext::CLIENT_HELLO {
         // TODO: don't send an extra 0xff
-        ExtensionContext::CLIENT_HELLO => Ok(Some(vec![0xff])),
-        _ => Ok(None),
+        return Ok(Some(vec![0xff]));
     }
+    if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
+        let client_random = r.server_nonce();
+        let cert_fingerprint = r
+            .cert_fingerprint()
+            .or(Err(SslAlert::DECODE_ERROR))?
+            .to_vec();
+        let doc = provider.attestation_doc(Some(client_random), None, Some(cert_fingerprint))?;
+        return Ok(Some(doc));
+    }
+    Ok(None)
 }
 
 fn parse_client_attestation_cb(
