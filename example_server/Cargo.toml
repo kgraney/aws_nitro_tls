@@ -7,6 +7,6 @@ edition = "2021"
 actix-rt = "2.7.0"
 actix-web = {version = "4", features = ["openssl"]}
 aws_nitro_tls = { path = "../aws_nitro_tls" }
-clap = {version = "3.2", features = ["derive"]}
+clap = {version = "4.0.32", features = ["derive"]}
 env_logger = "0.7"
 log = "0.4"

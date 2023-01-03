@@ -1,10 +1,13 @@
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
-use aws_nitro_tls::server::{AcceptorBuilder, NsmServerBuilder};
+use aws_nitro_tls::server::{AcceptorBuilder, LocalServerBuilder, NsmServerBuilder};
 use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
+    #[arg(long)]
+    no_nsm: bool,
+
     fullchain: PathBuf,
     private_key: PathBuf,
 }
@@ -19,7 +22,10 @@ async fn main() -> std::io::Result<()> {
 
     let args = CliArgs::parse();
 
-    let tls_builder: Box<dyn AcceptorBuilder> = Box::new(NsmServerBuilder::default());
+    let tls_builder: Box<dyn AcceptorBuilder> = match args.no_nsm {
+        true => Box::new(LocalServerBuilder::default()),
+        false => Box::new(NsmServerBuilder::default()),
+    };
 
     log::info!("Starting web server...");
     HttpServer::new(move || App::new().route("/test", web::get().to(test)))
