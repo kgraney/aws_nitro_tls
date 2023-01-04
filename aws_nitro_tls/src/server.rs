@@ -6,13 +6,13 @@ use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
 use crate::verifier::Verifier;
 use openssl::ex_data::Index;
+use openssl::pkey::{PKeyRef, Private};
 use openssl::ssl::{
-    ExtensionContext, Ssl, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
-    SslOptions, SslRef, SslVerifyMode, SslVersion,
+    ExtensionContext, Ssl, SslAcceptor, SslAcceptorBuilder, SslAlert, SslMethod, SslOptions,
+    SslRef, SslVerifyMode, SslVersion,
 };
 use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
 use std::marker::{PhantomPinned, Send, Sync};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 pub type NsmServerBuilder = AttestedBuilder<NsmAttestationProvider>;
@@ -21,8 +21,8 @@ pub type LocalServerBuilder = AttestedBuilder<FakeAttestationProvider>;
 pub trait AcceptorBuilder {
     fn ssl_acceptor_builder(
         &self,
-        fullchain: &PathBuf,
-        private_key: &PathBuf,
+        fullchain: &X509Ref,
+        private_key: &PKeyRef<Private>,
         verifier: Option<Verifier>,
     ) -> Result<SslAcceptorBuilder, Error>;
 }
@@ -68,15 +68,15 @@ where
 {
     fn ssl_acceptor_builder(
         &self,
-        fullchain: &PathBuf,
-        private_key: &PathBuf,
+        fullchain: &X509Ref,
+        private_key: &PKeyRef<Private>,
         verifier: Option<Verifier>,
     ) -> Result<SslAcceptorBuilder, Error> {
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         acceptor.clear_options(SslOptions::NO_TLSV1_3);
         acceptor.clear_options(SslOptions::NO_TICKET);
-        acceptor.set_private_key_file(private_key, SslFiletype::PEM)?;
-        acceptor.set_certificate_chain_file(fullchain)?;
+        acceptor.set_private_key(&private_key)?;
+        acceptor.set_certificate(&fullchain)?;
         acceptor.set_min_proto_version(Some(SslVersion::TLS1_3))?;
 
         let client_verified_idx = Ssl::new_ex_index::<bool>()?;

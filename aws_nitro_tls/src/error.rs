@@ -1,5 +1,6 @@
 use openssl::error::ErrorStack;
 use openssl::ssl::SslAlert;
+use rcgen::RcgenError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -27,11 +28,29 @@ pub enum Error {
 
     #[error("Error deserializing CBOR message")]
     CborDeserializeError(),
+
+    #[error("Error in rcgen")]
+    RcgenError(RcgenError),
+
+    #[error("IoError")]
+    IoError(),
 }
 
 impl From<Error> for SslAlert {
     fn from(e: Error) -> Self {
         log::info!("Converting error into generic SslAlert: {}", e);
         SslAlert::DECODE_ERROR
+    }
+}
+
+impl From<RcgenError> for Error {
+    fn from(e: RcgenError) -> Self {
+        Error::RcgenError(e)
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(_e: Error) -> Self {
+        std::io::Error::new(std::io::ErrorKind::Other, "oh no!")
     }
 }

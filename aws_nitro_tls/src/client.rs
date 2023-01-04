@@ -1,4 +1,5 @@
 use crate::attestation::{AttestationProvider, AttestationVerifier};
+use crate::certgen;
 use crate::constants;
 use crate::error::Error;
 use crate::nsm::NsmAttestationProvider;
@@ -11,8 +12,8 @@ use hyper_openssl::HttpsConnector;
 use openssl::ex_data::Index;
 use openssl::hash::MessageDigest;
 use openssl::ssl::{
-    ExtensionContext, Ssl, SslAlert, SslConnector, SslConnectorBuilder, SslFiletype, SslMethod,
-    SslRef, SslVerifyMode,
+    ExtensionContext, Ssl, SslAlert, SslConnector, SslConnectorBuilder, SslMethod, SslRef,
+    SslVerifyMode,
 };
 use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
 use std::env;
@@ -106,9 +107,10 @@ where
         };
         builder.set_verify_callback(SslVerifyMode::PEER, cert_cb);
 
-        // TODO: use a better cert here, or at least a correct path.
-        builder.set_private_key_file("./example_client/certs/key.pem", SslFiletype::PEM)?;
-        builder.set_certificate_chain_file("./example_client/certs/cert.pem")?;
+        // Self-signed cert to use for mutual TLS.
+        let cert = certgen::new_cert()?;
+        builder.set_certificate(&cert.cert)?;
+        builder.set_private_key(&cert.pkey)?;
 
         if let Ok(keylog_file) = env::var("SSLKEYLOGFILE") {
             log_secrets(&mut builder, keylog_file);
