@@ -1,9 +1,10 @@
-use crate::attestation::AttestationProvider;
+use crate::attestation::{AttestationProvider, AttestationVerifier};
 use crate::constants;
 use crate::error::Error;
 use crate::nsm::NsmAttestationProvider;
 use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
+use crate::verifier::Verifier;
 use openssl::ssl::{
     ExtensionContext, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
     SslOptions, SslRef, SslVerifyMode, SslVersion,
@@ -21,6 +22,7 @@ pub trait AcceptorBuilder {
         &self,
         fullchain: &PathBuf,
         private_key: &PathBuf,
+        verifier: Option<Verifier>,
     ) -> Result<SslAcceptorBuilder, Error>;
 }
 
@@ -29,9 +31,6 @@ where
     T: AttestationProvider,
 {
     attestation_provider: Arc<T>,
-
-    // If true require that connecting clients present a valid attestation for themself.
-    verify_client_attestation: bool,
 
     _not_unpin: PhantomPinned,
 }
@@ -43,7 +42,6 @@ where
     fn default() -> Self {
         AttestedBuilder {
             attestation_provider: Arc::new(T::default()),
-            verify_client_attestation: false,
             _not_unpin: PhantomPinned::default(),
         }
     }
@@ -54,10 +52,9 @@ where
     T: AttestationProvider + Default,
 {
     // TODO: make construction of this more idiomatic & obvious.
-    pub fn new(verify_client_attestation: bool) -> Self {
+    pub fn new() -> Self {
         AttestedBuilder {
             attestation_provider: Arc::new(T::default()),
-            verify_client_attestation: verify_client_attestation,
             _not_unpin: PhantomPinned::default(),
         }
     }
@@ -72,6 +69,7 @@ where
         &self,
         fullchain: &PathBuf,
         private_key: &PathBuf,
+        verifier: Option<Verifier>,
     ) -> Result<SslAcceptorBuilder, Error> {
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         acceptor.clear_options(SslOptions::NO_TLSV1_3);
@@ -80,29 +78,40 @@ where
         acceptor.set_certificate_chain_file(fullchain)?;
         acceptor.set_min_proto_version(Some(SslVersion::TLS1_3))?;
 
-        let ap_clone = self.attestation_provider.clone();
-        let add_cb =
-            move |r: &mut SslRef, ctx: ExtensionContext, cert: Option<(usize, &X509Ref)>| {
-                add_server_attestation_cb(&ap_clone, r, ctx, cert)
-            };
-        acceptor.add_custom_ext(
-            constants::EXTENSION_TYPE_VAL,
-            constants::extension_context(),
-            add_cb,
-            parse_server_attestation_cb,
-        )?;
-
-        if self.verify_client_attestation {
-            let cert_cb = |result: bool, _chain: &mut X509StoreContextRef| -> bool {
-                // TODO: verify the client's attestation document (and also their cert?)
-                log::debug!("verify callback: {}", result);
+        if let Some(_) = &verifier {
+            let cert_cb = |_result: bool, _chain: &mut X509StoreContextRef| -> bool {
+                // We don't actually care about certificate verification at all, so any certificate
+                // will do.  We do care about verifying the attestation extension, which is
+                // implemented in the parse callback.
                 true
+                // TODO: verify the client certificate?
             };
             acceptor.set_verify_callback(
                 SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT,
                 cert_cb,
             );
         }
+
+        let ap_clone = self.attestation_provider.clone();
+        let add_cb =
+            move |r: &mut SslRef, ctx: ExtensionContext, cert: Option<(usize, &X509Ref)>| {
+                add_server_attestation_cb(&ap_clone, r, ctx, cert)
+            };
+
+        let vp_clone = Arc::new(verifier).clone();
+        let parse_cb = move |r: &mut SslRef,
+                             ctx: ExtensionContext,
+                             data: &[u8],
+                             cert: Option<(usize, &X509Ref)>| {
+            parse_server_attestation_cb(vp_clone.clone(), r, ctx, data, cert)
+        };
+
+        acceptor.add_custom_ext(
+            constants::EXTENSION_TYPE_VAL,
+            constants::extension_context(),
+            add_cb,
+            parse_cb,
+        )?;
 
         Ok(acceptor)
     }
@@ -137,11 +146,20 @@ fn add_server_attestation_cb<T: AttestationProvider>(
 }
 
 fn parse_server_attestation_cb(
-    _r: &mut SslRef,
+    verifier: Arc<Option<Verifier>>,
+    r: &mut SslRef,
     ctx: ExtensionContext,
-    _data: &[u8],
+    data: &[u8],
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<(), SslAlert> {
     log::debug!("parse server attestation callback: {ctx:?}");
+    if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
+        let v = Option::as_ref(&verifier).ok_or(SslAlert::DECODE_ERROR)?;
+        let values = v.verify_doc(data)?;
+        log::debug!("client attestation: {values:?}");
+        if r.server_nonce() != values.client_nonce {
+            return Err(SslAlert::ILLEGAL_PARAMETER);
+        }
+    }
     Ok(())
 }

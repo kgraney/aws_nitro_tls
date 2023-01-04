@@ -1,5 +1,6 @@
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
 use aws_nitro_tls::server::{AcceptorBuilder, LocalServerBuilder, NsmServerBuilder};
+use aws_nitro_tls::verifier::Verifier;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -21,6 +22,10 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     let args = CliArgs::parse();
+    let verifier = match args.no_nsm {
+        true => Verifier::new_fake(),
+        false => Verifier::new_aws(),
+    };
 
     let tls_builder: Box<dyn AcceptorBuilder> = match args.no_nsm {
         true => Box::new(LocalServerBuilder::default()),
@@ -33,7 +38,7 @@ async fn main() -> std::io::Result<()> {
         .bind_openssl(
             "localhost:8443",
             tls_builder
-                .ssl_acceptor_builder(&args.fullchain, &args.private_key)
+                .ssl_acceptor_builder(&args.fullchain, &args.private_key, Some(verifier))
                 .unwrap(),
         )?
         .run()
