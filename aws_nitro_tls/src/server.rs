@@ -5,11 +5,12 @@ use crate::nsm::NsmAttestationProvider;
 use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
 use crate::verifier::Verifier;
+use openssl::ex_data::Index;
 use openssl::ssl::{
-    ExtensionContext, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
+    ExtensionContext, Ssl, SslAcceptor, SslAcceptorBuilder, SslAlert, SslFiletype, SslMethod,
     SslOptions, SslRef, SslVerifyMode, SslVersion,
 };
-use openssl::x509::{X509Ref, X509StoreContextRef};
+use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
 use std::marker::{PhantomPinned, Send, Sync};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -78,13 +79,19 @@ where
         acceptor.set_certificate_chain_file(fullchain)?;
         acceptor.set_min_proto_version(Some(SslVersion::TLS1_3))?;
 
+        let client_verified_idx = Ssl::new_ex_index::<bool>()?;
         if let Some(_) = &verifier {
-            let cert_cb = |_result: bool, _chain: &mut X509StoreContextRef| -> bool {
+            let cert_cb = move |_result: bool, chain: &mut X509StoreContextRef| -> bool {
                 // We don't actually care about certificate verification at all, so any certificate
                 // will do.  We do care about verifying the attestation extension, which is
-                // implemented in the parse callback.
-                true
-                // TODO: verify the client certificate?
+                // verified in the parse callback.  A boolean is transferred here and used as
+                // the certificate verify result regardless of what certificate is actually used.
+                let ssl_idx = X509StoreContext::ssl_idx().expect("ssl_idx invalid");
+                let ssl_ctx = chain.ex_data(ssl_idx).expect("error getting ssl_ctx");
+                match ssl_ctx.ex_data(client_verified_idx.clone()) {
+                    Some(r) => *r, // Previous result of verifying attestation extension
+                    None => false, // No attestation extension
+                }
             };
             acceptor.set_verify_callback(
                 SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT,
@@ -103,7 +110,14 @@ where
                              ctx: ExtensionContext,
                              data: &[u8],
                              cert: Option<(usize, &X509Ref)>| {
-            parse_server_attestation_cb(vp_clone.clone(), r, ctx, data, cert)
+            parse_server_attestation_cb(
+                vp_clone.clone(),
+                client_verified_idx.clone(),
+                r,
+                ctx,
+                data,
+                cert,
+            )
         };
 
         acceptor.add_custom_ext(
@@ -147,6 +161,7 @@ fn add_server_attestation_cb<T: AttestationProvider>(
 
 fn parse_server_attestation_cb(
     verifier: Arc<Option<Verifier>>,
+    client_verified_idx: Index<Ssl, bool>,
     r: &mut SslRef,
     ctx: ExtensionContext,
     data: &[u8],
@@ -154,12 +169,15 @@ fn parse_server_attestation_cb(
 ) -> Result<(), SslAlert> {
     log::debug!("parse server attestation callback: {ctx:?}");
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
+        r.set_ex_data(client_verified_idx, false);
         let v = Option::as_ref(&verifier).ok_or(SslAlert::DECODE_ERROR)?;
         let values = v.verify_doc(data)?;
-        log::debug!("client attestation: {values:?}");
         if r.server_nonce() != values.client_nonce {
+            log::debug!("client nonce failed");
             return Err(SslAlert::ILLEGAL_PARAMETER);
         }
+        // TODO: verify the cert fingerprint (this isn't set correctly at the moment)
+        r.set_ex_data(client_verified_idx, true);
     }
     Ok(())
 }
