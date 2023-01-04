@@ -1,6 +1,7 @@
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
 use aws_nitro_tls::server::{AcceptorBuilder, LocalServerBuilder, NsmServerBuilder};
 use aws_nitro_tls::verifier::Verifier;
+use futures::future;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -15,6 +16,10 @@ struct CliArgs {
 
 async fn test(_: HttpRequest) -> impl Responder {
     format!("some test endpoint")
+}
+
+async fn secret_test(_: HttpRequest) -> impl Responder {
+    format!("secret test endpoint")
 }
 
 #[actix_rt::main]
@@ -33,14 +38,29 @@ async fn main() -> std::io::Result<()> {
     };
 
     log::info!("Starting web server...");
-    HttpServer::new(move || App::new().route("/test", web::get().to(test)))
+
+    // PUBLIC port - for client-to-enclave communication.
+    let public = HttpServer::new(move || App::new().route("/test", web::get().to(test)))
         .bind(("localhost", 8080))?
         .bind_openssl(
             "localhost:8443",
             tls_builder
+                .ssl_acceptor_builder(&args.fullchain, &args.private_key, None)
+                .unwrap(),
+        )?
+        .run();
+
+    // SECRET port - for enclave-to-enclave communication.
+    let secret = HttpServer::new(move || App::new().route("/test", web::get().to(secret_test)))
+        .bind(("localhost", 9080))?
+        .bind_openssl(
+            "localhost:9443",
+            tls_builder
                 .ssl_acceptor_builder(&args.fullchain, &args.private_key, Some(verifier))
                 .unwrap(),
         )?
-        .run()
-        .await
+        .run();
+
+    future::try_join(public, secret).await?;
+    Ok(())
 }
