@@ -23,6 +23,30 @@ This library is a work-in-progress.
 * The certificate verification step on the client verifies that the certificate
   used for the session matches the fingerprint received in the attestation.  The
   attestation nonce is verified when parsing `ENCRYPTED_EXTENSIONS`.
+* Mutual TLS is supported by extensions on the `CERTIFICATE` message.
+    * The server sends a `CERTIFICATE_REQUEST` with the extension present.
+    * The client _must_ respond with its attestation document in COSE format in
+      the `CERTIFICATE` message it responds with.  If the client doesn't
+      respond this way server certificate verification will fail.
+    * The client's attestation should be signed with the nonce sent in the
+      `SERVER_HELLO` message from the server.
+    * The client should only send one certificate and place the extension on
+      that message.  Sending an entire chain is not useful; if a chain is sent
+      the extension should be on the leaf certificate (depth 0).
+* For mutual TLS the actual certificates used are not considered.  Client
+  certificates used for mutual TLS are dynamically generated and self-signed.
+    * In the example server the _server_ certificates for the mutual TLS port
+      are also dynamically generated and self-signed.  This allows for
+      enclave-to-enclave secure channels to be setup prior to having a
+      CA-signed certificate.  This is useful for a scenario where the CA-signed
+      certificate is distributed over these secure channels.
+    * It seems feasible to build on
+      [RFC 7250](https://datatracker.ietf.org/doc/html/rfc7250)
+      and move attestation documents from extensions into a custom certificate
+      format for mutual TLS, perhaps using COSE as that certificate format.
+      Unfortunately OpenSSL (in C and also the Rust bindings) don't provide
+      all the necessary hooks to introduce a custom certificate type that's not
+      in X509 format.
 
 ## Examples
 
