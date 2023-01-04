@@ -17,6 +17,7 @@ pub trait AttestationVerifier {
     fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, Error>;
 }
 
+#[derive(Debug)]
 pub struct SessionValues {
     pub client_nonce: Vec<u8>,
     pub cert_fingerprint: Vec<u8>,
