@@ -140,12 +140,13 @@ fn add_client_attestation_cb<T: AttestationProvider>(
     ctx: ExtensionContext,
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<Option<Vec<u8>>, SslAlert> {
-    log::debug!("add attestation extension callback: {ctx:?}");
     if ctx == ExtensionContext::CLIENT_HELLO {
+        log::debug!("requesting attestation from server in CLIENT_HELLO");
         // TODO: don't send an extra 0xff
         return Ok(Some(vec![0xff]));
     }
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
+        log::debug!("providing attestation to server in client CERTIFICATE");
         let client_random = r.server_nonce();
         let cert_fingerprint = r
             .cert_fingerprint()
@@ -165,13 +166,14 @@ fn parse_client_attestation_cb(
     data: &[u8],
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<(), SslAlert> {
-    log::debug!("parse client attestation callback: {ctx:?}");
     if ctx == ExtensionContext::TLS1_3_ENCRYPTED_EXTENSIONS {
+        log::debug!("parsing server attestation doc");
         let values = verifier.verify_doc(data)?;
         if r.client_nonce() != values.client_nonce {
+            log::error!("attestation doc nonce does not match!");
             return Err(SslAlert::ILLEGAL_PARAMETER);
         }
-        // The cert isn't availabe yet in this callback, so we store the cert fingerprint provided
+        // The cert isn't available yet in this callback, so we store the cert fingerprint provided
         // in the attestation document and retrieve it for comparison once we have the server's
         // certificate available.
         r.set_ex_data(fingerprint_idx, values.cert_fingerprint);
@@ -190,9 +192,9 @@ fn verify_cert_fingerprint(
         return result;
     }
 
+    log::debug!("verifying fingerprint in session certificate");
     // For only the first certificate in the chain verify that the certificate fingerprint matches
     // what we saw earlier in the attestation doc.
-    log::debug!("verifying fingerprint in session certificate");
     let ssl_idx = X509StoreContext::ssl_idx().expect("ssl_idx invalid");
     let ssl_ctx = chain.ex_data(ssl_idx).expect("error getting ssl_idx");
 

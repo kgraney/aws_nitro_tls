@@ -21,7 +21,7 @@ impl AttestationProvider for FakeAttestationProvider {
             nonce: nonce.unwrap(),
             public_key: public_key.unwrap(),
         };
-        log::debug!("Generating FAKE attestation doc: {doc:?}");
+        log::warn!("Generating FAKE attestation doc");
         let bytes = serde_cbor::to_vec(&doc).or(Err(Error::CborSerializeError()))?;
         Ok(bytes)
     }
@@ -31,7 +31,7 @@ impl AttestationVerifier for FakeAttestationProvider {
     fn verify_doc(&self, bytes: &[u8]) -> Result<SessionValues, Error> {
         let doc: FakeAttestationDoc =
             serde_cbor::from_reader(bytes).or(Err(Error::CborDeserializeError()))?;
-        log::debug!("Verifying FAKE attestation doc: {doc:?}");
+        log::warn!("Verifying FAKE attestation doc");
         Ok(SessionValues {
             client_nonce: doc.nonce,
             cert_fingerprint: doc.public_key,

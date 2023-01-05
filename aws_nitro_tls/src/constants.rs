@@ -10,6 +10,5 @@ pub fn extension_context() -> ExtensionContext {
     ctx.insert(ExtensionContext::TLS1_3_ENCRYPTED_EXTENSIONS);
     ctx.insert(ExtensionContext::TLS1_3_CERTIFICATE_REQUEST);
     ctx.insert(ExtensionContext::TLS1_3_CERTIFICATE);
-    ctx.insert(ExtensionContext::TLS1_3_NEW_SESSION_TICKET);
     ctx
 }

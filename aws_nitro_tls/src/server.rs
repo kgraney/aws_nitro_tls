@@ -137,7 +137,6 @@ fn add_server_attestation_cb<T: AttestationProvider>(
     ctx: ExtensionContext,
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<Option<Vec<u8>>, SslAlert> {
-    log::debug!("add server attestation callback: {ctx:?}");
     if ctx == ExtensionContext::TLS1_3_ENCRYPTED_EXTENSIONS {
         let client_random = r.client_nonce();
         // TODO: avoid copy?
@@ -146,12 +145,14 @@ fn add_server_attestation_cb<T: AttestationProvider>(
             .or(Err(SslAlert::DECODE_ERROR))?
             .to_vec();
         let doc = provider.attestation_doc(Some(client_random), None, Some(cert_fingerprint))?;
+        log::debug!("including attestation doc in response: {} bytes", doc.len());
         return Ok(Some(doc));
     }
 
     // When we send certificate requests to clients we include the extension requesting,
     // additionally, an attestation document.
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE_REQUEST {
+        log::debug!("requesting client certificate with attestation");
         // TODO: add a nonce here? option to include other data?
         return Ok(Some(vec![0xff]));
     }
@@ -167,8 +168,8 @@ fn parse_server_attestation_cb(
     data: &[u8],
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<(), SslAlert> {
-    log::debug!("parse server attestation callback: {ctx:?}");
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
+        log::debug!("parsing client certificate msg that should include attestation");
         r.set_ex_data(client_verified_idx, false);
         let v = Option::as_ref(&verifier).ok_or(SslAlert::DECODE_ERROR)?;
         let values = v.verify_doc(data)?;
