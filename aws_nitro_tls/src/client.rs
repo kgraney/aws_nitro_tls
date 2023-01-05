@@ -20,6 +20,7 @@ use std::env;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Arc;
+use tracing::{debug, error, warn};
 
 pub type NsmBuilder = AttestedBuilder<NsmAttestationProvider>;
 pub type LocalBuilder = AttestedBuilder<FakeAttestationProvider>;
@@ -122,7 +123,7 @@ where
 
 // Log TLS premaster/master secrets for decrypting sessions with Wireshark.
 fn log_secrets(builder: &mut SslConnectorBuilder, keylog_file: String) {
-    log::warn!("TLS secrets are being logged to: {}", keylog_file);
+    warn!("TLS secrets are being logged to: {}", keylog_file);
     builder.set_keylog_callback(move |_: &SslRef, s: &str| {
         let mut file = OpenOptions::new()
             .create(true)
@@ -141,12 +142,12 @@ fn add_client_attestation_cb<T: AttestationProvider>(
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<Option<Vec<u8>>, SslAlert> {
     if ctx == ExtensionContext::CLIENT_HELLO {
-        log::debug!("requesting attestation from server in CLIENT_HELLO");
+        debug!("requesting attestation from server in CLIENT_HELLO");
         // TODO: don't send an extra 0xff
         return Ok(Some(vec![0xff]));
     }
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
-        log::debug!("providing attestation to server in client CERTIFICATE");
+        debug!("providing attestation to server in client CERTIFICATE");
         let client_random = r.server_nonce();
         let cert_fingerprint = r
             .cert_fingerprint()
@@ -167,10 +168,10 @@ fn parse_client_attestation_cb(
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<(), SslAlert> {
     if ctx == ExtensionContext::TLS1_3_ENCRYPTED_EXTENSIONS {
-        log::debug!("parsing server attestation doc");
+        debug!("parsing server attestation doc");
         let values = verifier.verify_doc(data)?;
         if r.client_nonce() != values.client_nonce {
-            log::error!("attestation doc nonce does not match!");
+            error!("attestation doc nonce does not match!");
             return Err(SslAlert::ILLEGAL_PARAMETER);
         }
         // The cert isn't available yet in this callback, so we store the cert fingerprint provided
@@ -192,7 +193,7 @@ fn verify_cert_fingerprint(
         return result;
     }
 
-    log::debug!("verifying fingerprint in session certificate");
+    debug!("verifying fingerprint in session certificate");
     // For only the first certificate in the chain verify that the certificate fingerprint matches
     // what we saw earlier in the attestation doc.
     let ssl_idx = X509StoreContext::ssl_idx().expect("ssl_idx invalid");
@@ -219,6 +220,6 @@ fn verify_cert_fingerprint(
             return true;
         }
     }
-    log::debug!("Fingerprint mismatch! doc:{doc_fingerprint:?} cert:{cert_fingerprint:?}");
+    debug!("Fingerprint mismatch! doc:{doc_fingerprint:?} cert:{cert_fingerprint:?}");
     false
 }

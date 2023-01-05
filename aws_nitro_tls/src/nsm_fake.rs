@@ -1,6 +1,7 @@
 use crate::attestation::{AttestationProvider, AttestationVerifier, SessionValues};
 use crate::error::Error;
 use serde_derive::{Deserialize, Serialize};
+use tracing::warn;
 
 pub struct FakeAttestationProvider {}
 
@@ -21,7 +22,7 @@ impl AttestationProvider for FakeAttestationProvider {
             nonce: nonce.unwrap(),
             public_key: public_key.unwrap(),
         };
-        log::warn!("Generating FAKE attestation doc");
+        warn!("generating FAKE attestation doc");
         let bytes = serde_cbor::to_vec(&doc).or(Err(Error::CborSerializeError()))?;
         Ok(bytes)
     }
@@ -31,7 +32,7 @@ impl AttestationVerifier for FakeAttestationProvider {
     fn verify_doc(&self, bytes: &[u8]) -> Result<SessionValues, Error> {
         let doc: FakeAttestationDoc =
             serde_cbor::from_reader(bytes).or(Err(Error::CborDeserializeError()))?;
-        log::warn!("Verifying FAKE attestation doc");
+        warn!("verifying FAKE attestation doc");
         Ok(SessionValues {
             client_nonce: doc.nonce,
             cert_fingerprint: doc.public_key,

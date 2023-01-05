@@ -2,6 +2,7 @@ use openssl::error::ErrorStack;
 use openssl::ssl::SslAlert;
 use rcgen::RcgenError;
 use thiserror::Error;
+use tracing::info;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -38,7 +39,7 @@ pub enum Error {
 
 impl From<Error> for SslAlert {
     fn from(e: Error) -> Self {
-        log::info!("Converting error into generic SslAlert: {}", e);
+        info!("Converting error into generic SslAlert: {}", e);
         SslAlert::DECODE_ERROR
     }
 }

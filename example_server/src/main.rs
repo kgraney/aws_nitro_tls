@@ -14,6 +14,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use third_wheel::{mitm_layer, CertificateAuthority, MitmProxy, ThirdWheel};
 use thiserror::Error;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -46,7 +47,7 @@ pub enum MainError {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let args = CliArgs::parse();
     let verifier = match args.no_nsm {
@@ -59,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false => Box::new(NsmServerBuilder::default()),
     };
 
-    log::info!("Starting web server...");
+    info!("Starting web server...");
 
     let mut x509_pem = Vec::<u8>::new();
     let mut x509_file = File::open(&args.fullchain)?;
@@ -101,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Uses self-signed CA certs to act as an HTTPS CONNECT proxy.  This port should only be
     // exposed internally to the enclave, allowing other processes to send requests to other
     // enclaves, verifying that enclave's attestation document in the process.
-    log::info!("Starting FORWARD proxy...");
+    info!("Starting FORWARD proxy...");
     let ca = CertificateAuthority::load_from_pem_files_with_passphrase_on_key(
         &args.ca_fullchain,
         &args.ca_private_key,
@@ -121,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         public.map_err(MainError::from),
         secret.map_err(MainError::from),
     )?;
-    log::info!("Shutting down mitm_proxy");
+    info!("Shutting down mitm_proxy");
     third_wheel_killer.send(()).unwrap();
     Ok(())
 }

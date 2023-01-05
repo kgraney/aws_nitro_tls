@@ -14,6 +14,7 @@ use openssl::ssl::{
 use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
 use std::marker::{PhantomPinned, Send, Sync};
 use std::sync::Arc;
+use tracing::debug;
 
 pub type NsmServerBuilder = AttestedBuilder<NsmAttestationProvider>;
 pub type LocalServerBuilder = AttestedBuilder<FakeAttestationProvider>;
@@ -145,14 +146,14 @@ fn add_server_attestation_cb<T: AttestationProvider>(
             .or(Err(SslAlert::DECODE_ERROR))?
             .to_vec();
         let doc = provider.attestation_doc(Some(client_random), None, Some(cert_fingerprint))?;
-        log::debug!("including attestation doc in response: {} bytes", doc.len());
+        debug!("including attestation doc in response: {} bytes", doc.len());
         return Ok(Some(doc));
     }
 
     // When we send certificate requests to clients we include the extension requesting,
     // additionally, an attestation document.
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE_REQUEST {
-        log::debug!("requesting client certificate with attestation");
+        debug!("requesting client certificate with attestation");
         // TODO: add a nonce here? option to include other data?
         return Ok(Some(vec![0xff]));
     }
@@ -169,12 +170,12 @@ fn parse_server_attestation_cb(
     _cert: Option<(usize, &X509Ref)>,
 ) -> Result<(), SslAlert> {
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
-        log::debug!("parsing client certificate msg that should include attestation");
+        debug!("parsing client certificate msg that should include attestation");
         r.set_ex_data(client_verified_idx, false);
         let v = Option::as_ref(&verifier).ok_or(SslAlert::DECODE_ERROR)?;
         let values = v.verify_doc(data)?;
         if r.server_nonce() != values.client_nonce {
-            log::debug!("client nonce failed");
+            debug!("client nonce failed");
             return Err(SslAlert::ILLEGAL_PARAMETER);
         }
         // TODO: verify the cert fingerprint (this isn't set correctly at the moment)

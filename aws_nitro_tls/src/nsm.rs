@@ -8,6 +8,7 @@ use serde_bytes::ByteBuf;
 use std::marker::PhantomPinned;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::debug;
 
 pub struct NsmAttestationProvider {
     // File descriptor to the NSM device.
@@ -60,7 +61,7 @@ impl AttestationVerifier for NsmAttestationProvider {
             .as_secs();
         if let Ok(contents) = NitroAdDoc::from_bytes(&doc, self.root_cert.as_ref(), ts) {
             if let Ok(json) = contents.to_json() {
-                log::debug!("json attestation: {json:?}");
+                debug!("json attestation: {json:?}");
             }
 
             // TODO: Verify PCRs
