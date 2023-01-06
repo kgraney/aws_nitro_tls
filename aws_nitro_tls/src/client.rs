@@ -142,8 +142,7 @@ fn add_client_attestation_cb<P: AttestationProvider>(
 ) -> Result<Option<Vec<u8>>, SslAlert> {
     if ctx == ExtensionContext::CLIENT_HELLO {
         debug!("requesting attestation from server in CLIENT_HELLO");
-        // TODO: don't send an extra 0xff
-        return Ok(Some(vec![0xff]));
+        return Ok(Some(vec![]));
     }
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE {
         let provider = provider.as_ref().ok_or(SslAlert::DECODE_ERROR)?;

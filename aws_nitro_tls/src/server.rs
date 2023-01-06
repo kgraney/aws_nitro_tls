@@ -144,7 +144,7 @@ fn add_server_attestation_cb<P: AttestationProvider>(
     if ctx == ExtensionContext::TLS1_3_CERTIFICATE_REQUEST {
         debug!("requesting client certificate with attestation");
         // TODO: add a nonce here? option to include other data?
-        return Ok(Some(vec![0xff]));
+        return Ok(Some(vec![]));
     }
 
     Ok(None)
