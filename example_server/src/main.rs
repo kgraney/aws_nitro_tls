@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use third_wheel::{mitm_layer, CertificateAuthority, MitmProxy, ThirdWheel};
 use thiserror::Error;
 use tracing::info;
+use console_subscriber;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -66,7 +67,8 @@ fn get_builders(no_nsm: bool, mutual_tls: bool) -> Box<dyn AcceptorBuilder> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    console_subscriber::init();
+    //tracing_subscriber::fmt::init();
 
     let args = CliArgs::parse();
 
