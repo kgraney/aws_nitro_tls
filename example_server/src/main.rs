@@ -1,7 +1,9 @@
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+use aws_nitro_tls::attestation::{AttestationProvider, AttestationVerifier};
 use aws_nitro_tls::certgen;
-use aws_nitro_tls::server::{AcceptorBuilder, LocalServerBuilder, NsmServerBuilder};
-use aws_nitro_tls::verifier::Verifier;
+use aws_nitro_tls::nsm::{NsmAttestationProvider, NsmAttestationVerifier};
+use aws_nitro_tls::nsm_fake::{FakeAttestationProvider, FakeAttestationVerifier};
+use aws_nitro_tls::server::{AcceptorBuilder, AttestedBuilder};
 use clap::Parser;
 use futures::TryFutureExt;
 use hyper::service::Service;
@@ -45,20 +47,26 @@ pub enum MainError {
     ThirdWheelError(#[from] third_wheel::Error),
 }
 
+fn new_provider(no_nsm: bool) -> Box<dyn AttestationProvider> {
+    match no_nsm {
+        true => Box::new(FakeAttestationProvider::default()),
+        false => Box::new(NsmAttestationProvider::default()),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let args = CliArgs::parse();
-    let verifier = match args.no_nsm {
-        true => Verifier::new_fake(),
-        false => Verifier::new_aws(),
-    };
 
-    let tls_builder: Box<dyn AcceptorBuilder> = match args.no_nsm {
-        true => Box::new(LocalServerBuilder::default()),
-        false => Box::new(NsmServerBuilder::default()),
+    let tls_builder = AttestedBuilder::new(new_provider(args.no_nsm), None);
+
+    let verifier: Box<dyn AttestationVerifier> = match args.no_nsm {
+        true => Box::new(FakeAttestationVerifier::default()),
+        false => Box::new(NsmAttestationVerifier::default()),
     };
+    let mutual_tls_builder = AttestedBuilder::new(new_provider(args.no_nsm), Some(verifier));
 
     info!("Starting web server...");
 
@@ -80,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .bind(("localhost", 8080))?
         .bind_openssl(
             "localhost:8443",
-            tls_builder.ssl_acceptor_builder(x509.as_ref(), pkey.as_ref(), None)?,
+            tls_builder.ssl_acceptor_builder(x509.as_ref(), pkey.as_ref())?,
         )?
         .run();
 
@@ -93,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .bind(("localhost", 9080))?
         .bind_openssl(
             "localhost:9443",
-            tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey, Some(verifier))?,
+            mutual_tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey)?,
         )?
         .run();
 

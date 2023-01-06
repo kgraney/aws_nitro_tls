@@ -1,10 +1,7 @@
 use crate::attestation::{AttestationProvider, AttestationVerifier};
 use crate::constants;
 use crate::error::Error;
-use crate::nsm::NsmAttestationProvider;
-use crate::nsm_fake::FakeAttestationProvider;
 use crate::util::SslRefHelper as _;
-use crate::verifier::Verifier;
 use openssl::ex_data::Index;
 use openssl::pkey::{PKeyRef, Private};
 use openssl::ssl::{
@@ -12,66 +9,46 @@ use openssl::ssl::{
     SslRef, SslVerifyMode, SslVersion,
 };
 use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
-use std::marker::{PhantomPinned, Send, Sync};
+use std::marker::PhantomPinned;
 use std::sync::Arc;
 use tracing::debug;
-
-pub type NsmServerBuilder = AttestedBuilder<NsmAttestationProvider>;
-pub type LocalServerBuilder = AttestedBuilder<FakeAttestationProvider>;
 
 pub trait AcceptorBuilder {
     fn ssl_acceptor_builder(
         &self,
         fullchain: &X509Ref,
         private_key: &PKeyRef<Private>,
-        verifier: Option<Verifier>,
     ) -> Result<SslAcceptorBuilder, Error>;
 }
 
-pub struct AttestedBuilder<T>
-where
-    T: AttestationProvider,
-{
-    attestation_provider: Arc<T>,
-
+pub struct AttestedBuilder {
+    provider: Arc<dyn AttestationProvider>,
+    verifier: Option<Arc<dyn AttestationVerifier>>,
     _not_unpin: PhantomPinned,
 }
 
-impl<T> Default for AttestedBuilder<T>
-where
-    T: AttestationProvider + Default,
-{
-    fn default() -> Self {
-        AttestedBuilder {
-            attestation_provider: Arc::new(T::default()),
+impl AttestedBuilder {
+    pub fn new(
+        provider: Box<dyn AttestationProvider>,
+        verifier: Option<Box<dyn AttestationVerifier>>,
+    ) -> Self {
+        let verifier = match verifier {
+            None => None,
+            Some(b) => Some(Arc::from(b)),
+        };
+        Self {
+            provider: Arc::from(provider),
+            verifier: verifier,
             _not_unpin: PhantomPinned::default(),
         }
     }
 }
 
-impl<T> AttestedBuilder<T>
-where
-    T: AttestationProvider + Default,
-{
-    // TODO: make construction of this more idiomatic & obvious.
-    pub fn new() -> Self {
-        AttestedBuilder {
-            attestation_provider: Arc::new(T::default()),
-            _not_unpin: PhantomPinned::default(),
-        }
-    }
-}
-
-impl<T> AcceptorBuilder for AttestedBuilder<T>
-where
-    T: AttestationProvider,
-    T: Send + Sync + 'static,
-{
+impl AcceptorBuilder for AttestedBuilder {
     fn ssl_acceptor_builder(
         &self,
         fullchain: &X509Ref,
         private_key: &PKeyRef<Private>,
-        verifier: Option<Verifier>,
     ) -> Result<SslAcceptorBuilder, Error> {
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         acceptor.clear_options(SslOptions::NO_TLSV1_3);
@@ -81,7 +58,7 @@ where
         acceptor.set_min_proto_version(Some(SslVersion::TLS1_3))?;
 
         let client_verified_idx = Ssl::new_ex_index::<bool>()?;
-        if let Some(_) = &verifier {
+        if let Some(_) = &self.verifier {
             let cert_cb = move |_result: bool, chain: &mut X509StoreContextRef| -> bool {
                 // We don't actually care about certificate verification at all, so any certificate
                 // will do.  We do care about verifying the attestation extension, which is
@@ -100,19 +77,22 @@ where
             );
         }
 
-        let ap_clone = self.attestation_provider.clone();
+        let ap_clone = self.provider.clone();
         let add_cb =
             move |r: &mut SslRef, ctx: ExtensionContext, cert: Option<(usize, &X509Ref)>| {
                 add_server_attestation_cb(&ap_clone, r, ctx, cert)
             };
 
-        let vp_clone = Arc::new(verifier).clone();
+        let vp_clone = match self.verifier.clone() {
+            None => None,
+            Some(v) => Some(v.clone()),
+        };
         let parse_cb = move |r: &mut SslRef,
                              ctx: ExtensionContext,
                              data: &[u8],
                              cert: Option<(usize, &X509Ref)>| {
             parse_server_attestation_cb(
-                vp_clone.clone(),
+                vp_clone.as_ref(),
                 client_verified_idx.clone(),
                 r,
                 ctx,
@@ -132,8 +112,8 @@ where
     }
 }
 
-fn add_server_attestation_cb<T: AttestationProvider>(
-    provider: &Arc<T>,
+fn add_server_attestation_cb(
+    provider: &Arc<dyn AttestationProvider>,
     r: &mut SslRef,
     ctx: ExtensionContext,
     _cert: Option<(usize, &X509Ref)>,
@@ -162,7 +142,7 @@ fn add_server_attestation_cb<T: AttestationProvider>(
 }
 
 fn parse_server_attestation_cb(
-    verifier: Arc<Option<Verifier>>,
+    verifier: Option<&Arc<dyn AttestationVerifier>>,
     client_verified_idx: Index<Ssl, bool>,
     r: &mut SslRef,
     ctx: ExtensionContext,

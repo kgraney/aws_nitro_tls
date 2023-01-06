@@ -1,13 +1,12 @@
+pub mod attestation;
 pub mod certgen;
 pub mod client;
+pub mod nsm;
+pub mod nsm_fake;
 pub mod server;
-pub mod verifier;
 
-mod attestation;
 mod constants;
 mod error;
-mod nsm;
-mod nsm_fake;
 mod util;
 
 #[cfg(test)]

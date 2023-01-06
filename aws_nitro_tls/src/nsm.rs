@@ -10,23 +10,20 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 
+/// Provider of attestation documents from an AWS Nitro Security Module.
+///
+/// This provider can only be used within an AWS Nitro Enclave, where `/dev/nsm` is available.
 pub struct NsmAttestationProvider {
-    // File descriptor to the NSM device.
+    /// File descriptor to the NSM device.
     nsm_fd: i32,
-
-    // The root certificate that NSM signs attestation documents with.
-    root_cert: Arc<Vec<u8>>,
 
     _not_unpin: PhantomPinned,
 }
 
 impl Default for NsmAttestationProvider {
     fn default() -> Self {
-        let root_cert = include_bytes!("../certs/aws_root.der");
-        NsmAttestationProvider {
+        Self {
             nsm_fd: aws_nsm::driver::nsm_init(),
-            // TODO: can we avoid copying static data into an Arc?
-            root_cert: Arc::new(root_cert.to_vec()),
             _not_unpin: PhantomPinned::default(),
         }
     }
@@ -53,7 +50,30 @@ impl AttestationProvider for NsmAttestationProvider {
     }
 }
 
-impl AttestationVerifier for NsmAttestationProvider {
+/// Verifier for attestation documents from AWS Nitro Security Modules.
+///
+/// By default this verifies, among other things, that the attestation document is signed by the
+/// AWS root of trust as described
+/// [here](https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html).
+pub struct NsmAttestationVerifier {
+    /// The root certificate that NSM signs attestation documents with.
+    root_cert: Arc<Vec<u8>>,
+
+    _not_unpin: PhantomPinned,
+}
+
+impl Default for NsmAttestationVerifier {
+    fn default() -> Self {
+        let root_cert = include_bytes!("../certs/aws_root.der");
+        Self {
+            // TODO: can we avoid copying static data into an Arc?
+            root_cert: Arc::new(root_cert.to_vec()),
+            _not_unpin: PhantomPinned::default(),
+        }
+    }
+}
+
+impl AttestationVerifier for NsmAttestationVerifier {
     fn verify_doc(&self, doc: &[u8]) -> Result<SessionValues, Error> {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -81,5 +101,9 @@ impl AttestationVerifier for NsmAttestationProvider {
             });
         }
         Err(Error::FailedToParseAttestation())
+    }
+
+    fn trusted_cert_required(&self) -> bool {
+        return true;
     }
 }
