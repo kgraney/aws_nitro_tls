@@ -77,7 +77,7 @@ impl Default for NsmAttestationVerifier {
 }
 
 impl NsmAttestationVerifier {
-    fn new(trusted_cert_required: bool) -> Self {
+    pub fn new(trusted_cert_required: bool) -> Self {
         let root_cert = include_bytes!("../certs/aws_root.der");
         Self {
             // TODO: can we avoid copying static data into an Arc?
