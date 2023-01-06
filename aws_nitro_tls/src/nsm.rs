@@ -59,6 +59,8 @@ pub struct NsmAttestationVerifier {
     /// The root certificate that NSM signs attestation documents with.
     root_cert: Arc<Vec<u8>>,
 
+    trusted_cert_required: bool,
+
     _not_unpin: PhantomPinned,
 }
 
@@ -68,6 +70,19 @@ impl Default for NsmAttestationVerifier {
         Self {
             // TODO: can we avoid copying static data into an Arc?
             root_cert: Arc::new(root_cert.to_vec()),
+            trusted_cert_required: true,
+            _not_unpin: PhantomPinned::default(),
+        }
+    }
+}
+
+impl NsmAttestationVerifier {
+    fn new(trusted_cert_required: bool) -> Self {
+        let root_cert = include_bytes!("../certs/aws_root.der");
+        Self {
+            // TODO: can we avoid copying static data into an Arc?
+            root_cert: Arc::new(root_cert.to_vec()),
+            trusted_cert_required: trusted_cert_required,
             _not_unpin: PhantomPinned::default(),
         }
     }
@@ -104,6 +119,6 @@ impl AttestationVerifier for NsmAttestationVerifier {
     }
 
     fn trusted_cert_required(&self) -> bool {
-        return true;
+        return self.trusted_cert_required;
     }
 }
