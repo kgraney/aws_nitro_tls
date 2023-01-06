@@ -26,16 +26,21 @@ pub trait ConnectorBuilder {
     ) -> Result<hyper::Client<HttpsConnector<HttpConnector>, hyper::body::Body>, Error>;
 }
 
-pub struct AttestedBuilder {
-    provider: Option<Arc<dyn AttestationProvider>>,
-    verifier: Arc<dyn AttestationVerifier>,
+pub struct AttestedBuilder<P, V>
+where
+    P: AttestationProvider,
+    V: AttestationVerifier,
+{
+    provider: Option<Arc<P>>,
+    verifier: Arc<V>,
 }
 
-impl AttestedBuilder {
-    pub fn new(
-        verifier: Box<dyn AttestationVerifier>,
-        provider: Option<Box<dyn AttestationProvider>>,
-    ) -> Self {
+impl<P, V> AttestedBuilder<P, V>
+where
+    P: AttestationProvider,
+    V: AttestationVerifier,
+{
+    pub fn new(verifier: V, provider: Option<P>) -> Self {
         let provider = match provider {
             None => None,
             Some(b) => Some(Arc::from(b)),
@@ -47,7 +52,11 @@ impl AttestedBuilder {
     }
 }
 
-impl ConnectorBuilder for AttestedBuilder {
+impl<P, V> ConnectorBuilder for AttestedBuilder<P, V>
+where
+    P: AttestationProvider + 'static,
+    V: AttestationVerifier + 'static,
+{
     fn http_client(
         &self,
     ) -> Result<hyper::Client<HttpsConnector<HttpConnector>, hyper::body::Body>, Error> {
@@ -125,8 +134,8 @@ fn log_secrets(builder: &mut SslConnectorBuilder, keylog_file: String) {
     });
 }
 
-fn add_client_attestation_cb(
-    provider: &Option<Arc<dyn AttestationProvider>>,
+fn add_client_attestation_cb<P: AttestationProvider>(
+    provider: &Option<Arc<P>>,
     r: &mut SslRef,
     ctx: ExtensionContext,
     _cert: Option<(usize, &X509Ref)>,
@@ -151,8 +160,8 @@ fn add_client_attestation_cb(
     Ok(None)
 }
 
-fn parse_client_attestation_cb(
-    verifier: &Arc<dyn AttestationVerifier>,
+fn parse_client_attestation_cb<V: AttestationVerifier>(
+    verifier: &Arc<V>,
     fingerprint_idx: Index<Ssl, Vec<u8>>,
     r: &mut SslRef,
     ctx: ExtensionContext,
@@ -174,8 +183,8 @@ fn parse_client_attestation_cb(
     Ok(())
 }
 
-fn verify_cert_fingerprint(
-    verifier: &Arc<dyn AttestationVerifier>,
+fn verify_cert_fingerprint<V: AttestationVerifier>(
+    verifier: &Arc<V>,
     fingerprint_idx: Index<Ssl, Vec<u8>>,
     result: bool,
     chain: &mut X509StoreContextRef,

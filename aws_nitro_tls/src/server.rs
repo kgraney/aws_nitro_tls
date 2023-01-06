@@ -21,17 +21,22 @@ pub trait AcceptorBuilder {
     ) -> Result<SslAcceptorBuilder, Error>;
 }
 
-pub struct AttestedBuilder {
-    provider: Arc<dyn AttestationProvider>,
-    verifier: Option<Arc<dyn AttestationVerifier>>,
+pub struct AttestedBuilder<P, V>
+where
+    P: AttestationProvider,
+    V: AttestationVerifier,
+{
+    provider: Arc<P>,
+    verifier: Option<Arc<V>>,
     _not_unpin: PhantomPinned,
 }
 
-impl AttestedBuilder {
-    pub fn new(
-        provider: Box<dyn AttestationProvider>,
-        verifier: Option<Box<dyn AttestationVerifier>>,
-    ) -> Self {
+impl<P, V> AttestedBuilder<P, V>
+where
+    P: AttestationProvider,
+    V: AttestationVerifier,
+{
+    pub fn new(provider: P, verifier: Option<V>) -> Self {
         let verifier = match verifier {
             None => None,
             Some(b) => Some(Arc::from(b)),
@@ -44,7 +49,11 @@ impl AttestedBuilder {
     }
 }
 
-impl AcceptorBuilder for AttestedBuilder {
+impl<P, V> AcceptorBuilder for AttestedBuilder<P, V>
+where
+    P: AttestationProvider + 'static,
+    V: AttestationVerifier + 'static,
+{
     fn ssl_acceptor_builder(
         &self,
         fullchain: &X509Ref,
@@ -112,8 +121,8 @@ impl AcceptorBuilder for AttestedBuilder {
     }
 }
 
-fn add_server_attestation_cb(
-    provider: &Arc<dyn AttestationProvider>,
+fn add_server_attestation_cb<P: AttestationProvider>(
+    provider: &Arc<P>,
     r: &mut SslRef,
     ctx: ExtensionContext,
     _cert: Option<(usize, &X509Ref)>,
@@ -141,8 +150,8 @@ fn add_server_attestation_cb(
     Ok(None)
 }
 
-fn parse_server_attestation_cb(
-    verifier: Option<&Arc<dyn AttestationVerifier>>,
+fn parse_server_attestation_cb<V: AttestationVerifier>(
+    verifier: Option<&Arc<V>>,
     client_verified_idx: Index<Ssl, bool>,
     r: &mut SslRef,
     ctx: ExtensionContext,

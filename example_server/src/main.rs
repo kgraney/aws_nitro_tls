@@ -47,10 +47,20 @@ pub enum MainError {
     ThirdWheelError(#[from] third_wheel::Error),
 }
 
-fn new_provider(no_nsm: bool) -> Box<dyn AttestationProvider> {
+fn builder<P, V>(mutual_tls: bool) -> Box<dyn AcceptorBuilder>
+where P: AttestationProvider + Default + 'static,
+      V: AttestationVerifier + Default + 'static,
+{
+    match mutual_tls {
+        true => Box::new(AttestedBuilder::<P, V>::new(P::default(), Some(V::default()))),
+        false => Box::new(AttestedBuilder::<P, V>::new(P::default(), None)),
+    }
+}
+
+fn get_builders(no_nsm: bool, mutual_tls: bool) -> Box<dyn AcceptorBuilder> {
     match no_nsm {
-        true => Box::new(FakeAttestationProvider::default()),
-        false => Box::new(NsmAttestationProvider::default()),
+        true => builder::<FakeAttestationProvider, FakeAttestationVerifier>(mutual_tls),
+        false => builder::<NsmAttestationProvider, NsmAttestationVerifier>(mutual_tls),
     }
 }
 
@@ -60,13 +70,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = CliArgs::parse();
 
-    let tls_builder = AttestedBuilder::new(new_provider(args.no_nsm), None);
-
-    let verifier: Box<dyn AttestationVerifier> = match args.no_nsm {
-        true => Box::new(FakeAttestationVerifier::default()),
-        false => Box::new(NsmAttestationVerifier::default()),
-    };
-    let mutual_tls_builder = AttestedBuilder::new(new_provider(args.no_nsm), Some(verifier));
+    let tls_builder = get_builders(args.no_nsm, false);
+    let mutual_tls_builder = get_builders(args.no_nsm, true);
 
     info!("Starting web server...");
 
