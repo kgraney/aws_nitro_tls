@@ -22,7 +22,10 @@ where
     P: AttestationProvider + Default + 'static,
     V: AttestationVerifier + Default + 'static,
 {
-    Box::new(AttestedBuilder::<P, V>::new(V::default(), Some(P::default())))
+    Box::new(AttestedBuilder::<P, V>::new(
+        V::default(),
+        Some(P::default()),
+    ))
 }
 
 #[tokio::main]
