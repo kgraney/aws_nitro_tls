@@ -1,14 +1,15 @@
-use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+use actix_web::{web, web::Data, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use awc::Client;
 use aws_nitro_tls::attestation::{AttestationProvider, AttestationVerifier};
 use aws_nitro_tls::certgen;
 use aws_nitro_tls::nsm::{NsmAttestationProvider, NsmAttestationVerifier};
 use aws_nitro_tls::nsm_fake::{FakeAttestationProvider, FakeAttestationVerifier};
 use aws_nitro_tls::server::{AcceptorBuilder, AttestedBuilder};
 use clap::Parser;
+use console_subscriber;
 use futures::TryFutureExt;
 use hyper::service::Service;
-use hyper::Body;
-use hyper::Request;
+use hyper::{Body, Request};
 use openssl::pkey::PKey;
 use openssl::x509::X509;
 use std::fs::File;
@@ -16,8 +17,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use third_wheel::{mitm_layer, CertificateAuthority, MitmProxy, ThirdWheel};
 use thiserror::Error;
-use tracing::info;
-use console_subscriber;
+use tracing::{debug, info};
+use url::Url;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -39,6 +40,38 @@ async fn secret_test(_: HttpRequest) -> impl Responder {
     format!("secret test endpoint")
 }
 
+async fn forward(
+    req: HttpRequest,
+    payload: web::Payload,
+    client: web::Data<Client>,
+) -> Result<HttpResponse, actix_web::Error> {
+    // TODO: Determine destination port from source port & config?
+    let host = "localhost:8000";
+    let mut new_url = Url::parse(&format!("http://{}", host)).unwrap();
+
+    new_url.set_path(req.uri().path());
+    new_url.set_query(req.uri().query());
+    debug!("req: {:?}\nreq.uri: {:?}", req, req.uri().path());
+
+    let forwarded_req = client
+        .request_from(new_url.as_str(), req.head())
+        .no_decompress();
+
+    let res = forwarded_req
+        .send_stream(payload)
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    let mut client_resp = HttpResponse::build(res.status());
+
+    // Proxies aren't supposed to forward 'Connection' headers.
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Connection
+    for (header_name, header_value) in res.headers().iter().filter(|(h, _)| *h != "connection") {
+        client_resp.append_header((header_name.clone(), header_value.clone()));
+    }
+    Ok(client_resp.streaming(res))
+}
+
 #[derive(Error, Debug)]
 pub enum MainError {
     #[error("IoError.")]
@@ -49,11 +82,15 @@ pub enum MainError {
 }
 
 fn builder<P, V>(mutual_tls: bool) -> Box<dyn AcceptorBuilder>
-where P: AttestationProvider + Default + 'static,
-      V: AttestationVerifier + Default + 'static,
+where
+    P: AttestationProvider + Default + 'static,
+    V: AttestationVerifier + Default + 'static,
 {
     match mutual_tls {
-        true => Box::new(AttestedBuilder::<P, V>::new(P::default(), Some(V::default()))),
+        true => Box::new(AttestedBuilder::<P, V>::new(
+            P::default(),
+            Some(V::default()),
+        )),
         false => Box::new(AttestedBuilder::<P, V>::new(P::default(), None)),
     }
 }
@@ -112,6 +149,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?
         .run();
 
+    // REVERSE port - to act as a reverse proxy when other enclaves are talking to this one
+    //
+    // Forwards traffic from this port to some other process running inside the enclave without
+    // that other process needing to understand attestation documents.
+    let reverse = HttpServer::new(move || {
+        App::new()
+            .app_data(Data::new(Client::new()))
+            .default_service(web::route().to(forward))
+    })
+    .bind_openssl(
+        "localhost:6443",
+        mutual_tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey)?,
+    )?
+    .run();
+
     // FORWARD port - to act as a forward proxy for talking to other enclaves
     //
     // Uses self-signed CA certs to act as an HTTPS CONNECT proxy.  This port should only be
@@ -136,6 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     futures::try_join!(
         public.map_err(MainError::from),
         secret.map_err(MainError::from),
+        reverse.map_err(MainError::from),
     )?;
     info!("Shutting down mitm_proxy");
     third_wheel_killer.send(()).unwrap();
