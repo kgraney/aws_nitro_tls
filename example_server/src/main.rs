@@ -17,11 +17,37 @@ use std::io::Read;
 use std::path::PathBuf;
 use third_wheel::{mitm_layer, CertificateAuthority, MitmProxy, ThirdWheel};
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::info;
 use url::Url;
 
 #[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
 struct CliArgs {
+    /// Port to listen on for the demo HTTPS handlers with client auth.
+    #[arg(long, default_value_t = 8443)]
+    tls_port: u16,
+
+    /// Port to listen on for the demo HTTPS handlers with required mutual auth.
+    #[arg(long, default_value_t = 9443)]
+    mutual_tls_port: u16,
+
+    /// Port to listen on for the FORWARD proxy.  This proxy should be exposed within the enclave
+    /// and verifies the attestation of destination hosts.
+    #[arg(long, default_value_t = 6443)]
+    forward_port: u16,
+
+    /// Port to listen on for the REVERSE proxy.  This proxy should be exposed outside the enclave
+    /// and verifies the attestation of hosts making requests to it.  Requests are forwarded to
+    /// `reverse_destination`.
+    #[arg(long, default_value_t = 7443)]
+    reverse_port: u16,
+
+    /// Port to forward requests to `reverse_port` to.
+    #[arg(long, default_value_t = 8000)]
+    reverse_destination: u16,
+
+    /// If set, don't use Nitro Security Module attestations.  Instead fake attestations will be
+    /// used.
     #[arg(long)]
     no_nsm: bool,
 
@@ -45,13 +71,11 @@ async fn forward(
     payload: web::Payload,
     client: web::Data<Client>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    // TODO: Determine destination port from source port & config?
-    let host = "localhost:8000";
-    let mut new_url = Url::parse(&format!("http://{}", host)).unwrap();
-
+    // TODO: make the destination configurable.
+    let mut new_url =
+        Url::parse(&format!("http://localhost:8080")).unwrap();
     new_url.set_path(req.uri().path());
     new_url.set_query(req.uri().query());
-    debug!("req: {:?}\nreq.uri: {:?}", req, req.uri().path());
 
     let forwarded_req = client
         .request_from(new_url.as_str(), req.head())
@@ -131,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let public = HttpServer::new(move || App::new().route("/test", web::get().to(test)))
         .bind(("localhost", 8080))?
         .bind_openssl(
-            "localhost:8443",
+            format!("localhost:{}", args.tls_port),
             tls_builder.ssl_acceptor_builder(x509.as_ref(), pkey.as_ref())?,
         )?
         .run();
@@ -144,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let secret = HttpServer::new(move || App::new().route("/test", web::get().to(secret_test)))
         .bind(("localhost", 9080))?
         .bind_openssl(
-            "localhost:9443",
+            format!("localhost:{}", args.mutual_tls_port),
             mutual_tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey)?,
         )?
         .run();
@@ -159,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .default_service(web::route().to(forward))
     })
     .bind_openssl(
-        "localhost:6443",
+        format!("localhost:{}", args.reverse_port),
         mutual_tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey)?,
     )?
     .run();
@@ -180,7 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mitm_layer(|req: Request<Body>, mut third_wheel: ThirdWheel| third_wheel.call(req));
     let mitm_proxy = MitmProxy::builder(trivial_mitm, ca).build();
     let (_, mitm_proxy) = mitm_proxy
-        .bind_with_graceful_shutdown("127.0.0.1:7443".parse()?, async {
+        .bind_with_graceful_shutdown(format!("127.0.0.1:{}", args.forward_port).parse()?, async {
             receiver.await.ok().unwrap()
         });
     tokio::spawn(mitm_proxy);
