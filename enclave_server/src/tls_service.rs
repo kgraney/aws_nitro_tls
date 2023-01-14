@@ -13,7 +13,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio_openssl::SslStream;
 use tokio_vsock::VsockListener;
-use tracing::{error, info};
+use tracing::{debug, info};
 
 pub struct TlsService<S> {
     certs: Arc<CertificatePair>,
@@ -75,12 +75,9 @@ where
         let mut ssl_stream = SslStream::new(ssl, stream).unwrap();
 
         Pin::new(&mut ssl_stream).accept().await.unwrap();
-        let mut conn = http1::Builder::new()
-            .keep_alive(true)
-            .serve_connection(ssl_stream, self.service);
-        Pin::new(&mut conn).graceful_shutdown();
+        let conn = http1::Builder::new().serve_connection(ssl_stream, self.service);
         if let Err(http_err) = conn.await {
-            error!("Error while serving HTTP connection: {}", http_err);
+            debug!("Error while serving HTTP connection: {}", http_err);
         }
     }
 }
