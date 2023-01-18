@@ -6,7 +6,7 @@ pub mod nsm_fake;
 pub mod server;
 
 mod constants;
-mod error;
+pub mod error;
 mod util;
 
 #[cfg(test)]
