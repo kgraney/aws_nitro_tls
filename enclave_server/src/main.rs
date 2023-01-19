@@ -1,10 +1,16 @@
 mod aws_nitro_tls_util;
 mod certificates;
+mod error;
+mod proxy;
+mod proxy_service;
 mod socket;
 mod tls_service;
+mod to_refactor;
 
 use crate::aws_nitro_tls_util::acceptor_builder;
 use crate::certificates::CertificatePair;
+use crate::proxy::proxy_handler;
+use crate::proxy_service::ProxyService;
 use crate::socket::ipv4_listen;
 use crate::tls_service::TlsService;
 use bytes::Bytes;
@@ -42,6 +48,10 @@ struct CliArgs {
     /// PRIVATE port for VSOCK connections.
     #[arg(long)]
     private_port_vsock: Option<u16>,
+
+    /// FORWARD PROXY port for TCP connections.
+    #[arg(long)]
+    proxy_port: Option<u16>,
 
     /// If set, don't use Nitro Security Module attestations.  Instead fake attestations will be
     /// used.
@@ -118,6 +128,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .tcp_listener(ipv4_listen(*port).await.unwrap()),
         ));
     }
+
+    let proxy = ProxyService::new(service_fn(proxy_handler));
+    if let Some(port) = &args.proxy_port {
+        servers.push(tokio::task::spawn(
+            proxy
+                .clone()
+                .tcp_listener(ipv4_listen(*port).await.unwrap()),
+        ));
+    }
+
     drop(startup);
 
     futures::future::join_all(servers).await;
