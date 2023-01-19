@@ -1,6 +1,5 @@
 use std::io::Error;
 use tokio::net::TcpListener;
-use tokio_vsock::VsockListener;
 
 pub async fn ipv4_listen(port: u16) -> Result<TcpListener, Error> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
