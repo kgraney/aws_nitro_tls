@@ -66,11 +66,11 @@ where
 
         let slice = fullchain.as_slice();
         let (leaf, chain) = slice.split_first().ok_or(Error::NoCertificateKnown("No leaf certificate in chain".to_string()))?;
-        acceptor.set_certificate(leaf);
+        acceptor.set_certificate(leaf)?;
         for cert in chain {
             // TODO: Investigate why add_extra_chain_cert needs an X509 instead of an X509Ref.
             let copy = X509::from_der(&cert.to_der()?)?;
-            acceptor.add_extra_chain_cert(copy);
+            acceptor.add_extra_chain_cert(copy)?;
         }
         acceptor.set_min_proto_version(Some(SslVersion::TLS1_3))?;
 

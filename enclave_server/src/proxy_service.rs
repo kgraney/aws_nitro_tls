@@ -2,7 +2,6 @@ use hyper::server::conn::http1;
 use hyper::service::Service;
 use hyper::{body::Body, body::Incoming, Request, Response};
 use std::error::Error as StdError;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;

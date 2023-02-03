@@ -50,7 +50,7 @@ where
         .ok_or(Error::ProxyError("No port specified".to_string()))?;
     debug!("MITM connection for {host:?} {port:?}");
 
-    let (target_stream, target_cert) = connect_to_target(host, port.as_str()).await?;
+    let (target_stream, _target_cert) = connect_to_target(host, port.as_str()).await?;
 
     // TODO: generate cert dynamically
     let chain = include_bytes!("../../example_server/fullchain.pem");
