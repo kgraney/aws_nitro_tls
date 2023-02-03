@@ -29,9 +29,10 @@ use tracing::{info, span, Level};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct CliArgs {
-    /// CID to listen on for VSOCK ports.  This should almost always be 1 (see vsock(7)).
-    #[arg(long, default_value_t = 1)]
-    listen_cid: u16,
+    /// CID to listen on for VSOCK ports. This should almost always be VMADDR_PORT_ANY (-1U).
+    /// See vsock(7) for details.
+    #[arg(long, default_value_t = libc::VMADDR_PORT_ANY)]
+    listen_cid: u32,
 
     /// PUBLIC port for TCP connections.
     #[arg(long)]
