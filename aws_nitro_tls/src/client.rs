@@ -214,6 +214,7 @@ fn verify_cert_fingerprint<V: AttestationVerifier>(
     };
 
     if *cert_fingerprint == *doc_fingerprint {
+        debug!("fingerprint verification successful!");
         if verifier.trusted_cert_required() {
             return result;
         } else {

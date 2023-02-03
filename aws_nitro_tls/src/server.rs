@@ -8,7 +8,7 @@ use openssl::ssl::{
     ExtensionContext, Ssl, SslAcceptor, SslAcceptorBuilder, SslAlert, SslMethod, SslOptions,
     SslRef, SslVerifyMode, SslVersion,
 };
-use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef};
+use openssl::x509::{X509, X509Ref, X509StoreContext, X509StoreContextRef};
 use std::marker::PhantomPinned;
 use std::sync::Arc;
 use tracing::debug;
@@ -16,7 +16,7 @@ use tracing::debug;
 pub trait AcceptorBuilder {
     fn ssl_acceptor_builder(
         &self,
-        fullchain: &X509Ref,
+        fullchain: &Vec<X509>,
         private_key: &PKeyRef<Private>,
     ) -> Result<SslAcceptorBuilder, Error>;
 }
@@ -56,14 +56,22 @@ where
 {
     fn ssl_acceptor_builder(
         &self,
-        fullchain: &X509Ref,
+        fullchain: &Vec<X509>,
         private_key: &PKeyRef<Private>,
     ) -> Result<SslAcceptorBuilder, Error> {
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
         acceptor.clear_options(SslOptions::NO_TLSV1_3);
         acceptor.clear_options(SslOptions::NO_TICKET);
         acceptor.set_private_key(&private_key)?;
-        acceptor.set_certificate(&fullchain)?;
+
+        let slice = fullchain.as_slice();
+        let (leaf, chain) = slice.split_first().ok_or(Error::NoCertificateKnown("No leaf certificate in chain".to_string()))?;
+        acceptor.set_certificate(leaf);
+        for cert in chain {
+            // TODO: Investigate why add_extra_chain_cert needs an X509 instead of an X509Ref.
+            let copy = X509::from_der(&cert.to_der()?)?;
+            acceptor.add_extra_chain_cert(copy);
+        }
         acceptor.set_min_proto_version(Some(SslVersion::TLS1_3))?;
 
         let client_verified_idx = Ssl::new_ex_index::<bool>()?;

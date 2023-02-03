@@ -146,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pkey_file = File::open(&args.private_key)?;
     pkey_file.read_to_end(&mut pkey_pem)?;
 
-    let x509 = X509::from_pem(&x509_pem)?;
+    let x509 = X509::stack_from_pem(&x509_pem)?;
     let pkey = PKey::private_key_from_pem(&pkey_pem)?;
 
     // PUBLIC port - for client-to-enclave communication.
@@ -165,11 +165,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use self-signed certs for this connection.  The assumption is that this port is only exposed
     // to an internal enclave-to-enclave network.
     let cert = certgen::new_cert()?;
+    let cert_chain = vec![cert.cert];
     let secret = HttpServer::new(move || App::new().route("/test", web::get().to(secret_test)))
         .bind(("localhost", 9080))?
         .bind_openssl(
             format!("localhost:{}", args.mutual_tls_port),
-            mutual_tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey)?,
+            mutual_tls_builder.ssl_acceptor_builder(&cert_chain, &cert.pkey)?,
         )?
         .run();
 
@@ -184,7 +185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .bind_openssl(
         format!("localhost:{}", args.reverse_port),
-        mutual_tls_builder.ssl_acceptor_builder(&cert.cert, &cert.pkey)?,
+        mutual_tls_builder.ssl_acceptor_builder(&cert_chain, &cert.pkey)?,
     )?
     .run();
 

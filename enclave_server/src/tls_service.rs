@@ -13,7 +13,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio_openssl::SslStream;
 use tokio_vsock::VsockListener;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
 pub struct TlsService<S> {
     certs: Arc<CertificatePair>,
@@ -69,11 +69,13 @@ where
     {
         let acceptor = self
             .acceptor_builder
-            .ssl_acceptor_builder(self.certs.x509.as_ref(), self.certs.pkey.as_ref())
+            .ssl_acceptor_builder(&self.certs.x509, self.certs.pkey.as_ref())
             .unwrap();
         let ssl = Ssl::new(acceptor.build().context()).unwrap();
         let mut ssl_stream = SslStream::new(ssl, stream).unwrap();
 
+        let e = errno::errno();
+        error!("possible error {}: {}", e.0, e);
         Pin::new(&mut ssl_stream).accept().await.unwrap();
         let conn = http1::Builder::new().serve_connection(ssl_stream, self.service);
         if let Err(http_err) = conn.await {

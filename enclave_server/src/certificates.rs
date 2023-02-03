@@ -8,8 +8,9 @@ use tracing::info;
 /// Stores the TLS certificate pair to use for a connection.
 #[derive(Clone)]
 pub struct CertificatePair {
-    /// X509 Certificate
-    pub x509: X509,
+    /// X509 certificate chain.  The leaf certificate should be first, with the rest forming a
+    /// the full certificate chain.
+    pub x509: Vec<X509>,
 
     /// Private Key
     pub pkey: PKey<Private>,
@@ -27,7 +28,7 @@ impl CertificatePair {
         pkey_file.read_to_end(&mut pkey_pem)?;
 
         Ok(CertificatePair {
-            x509: X509::from_pem(&x509_pem)?,
+            x509: X509::stack_from_pem(&x509_pem)?,
             pkey: PKey::private_key_from_pem(&pkey_pem)?,
         })
     }
