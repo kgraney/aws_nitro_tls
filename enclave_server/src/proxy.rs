@@ -58,7 +58,8 @@ where
     let x509 = X509::stack_from_pem(chain).unwrap();
     let pkey = PKey::private_key_from_pem(private_key).unwrap();
 
-    let server_builder = acceptor_builder(/*nsm=*/ true, false);
+    // TODO: pass NSM arg!
+    let server_builder = acceptor_builder(/*no_nsm=*/ true, /*mutual_tls=*/ false);
     let acceptor = server_builder.ssl_acceptor_builder(&x509, pkey.as_ref())?;
     let ssl = Ssl::new(acceptor.build().context()).unwrap();
     let mut source_stream = SslStream::new(ssl, stream).unwrap();
@@ -89,7 +90,7 @@ where
 async fn connect_to_target(host: &str, port: &str) -> Result<(SslStream<TcpStream>, X509), Error> {
     let target_tcp_stream = TcpStream::connect(format!("{}:{}", host, port)).await?;
     // TODO: pass NSM arg
-    let ssl = connector_builder(/*nsm=*/ true, true)
+    let ssl = connector_builder(/*no_nsm=*/ false, /*mutual_tls=*/ true)
         .ssl_connector_builder()?
         .build()
         .configure()?
