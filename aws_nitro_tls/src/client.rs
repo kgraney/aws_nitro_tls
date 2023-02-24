@@ -190,6 +190,8 @@ fn verify_cert_fingerprint<V: AttestationVerifier>(
 ) -> bool {
     let depth = chain.error_depth();
     if depth != 0 {
+        // TODO: Make this verification configurable.  We might want to override the return value
+        // here, not using the result from OpenSSL.
         return result;
     }
 
