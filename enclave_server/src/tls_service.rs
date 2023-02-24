@@ -13,7 +13,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio_openssl::SslStream;
 use tokio_vsock::VsockListener;
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 pub struct TlsService<S> {
     certs: Arc<CertificatePair>,

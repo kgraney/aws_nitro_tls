@@ -72,8 +72,7 @@ async fn forward(
     client: web::Data<Client>,
 ) -> Result<HttpResponse, actix_web::Error> {
     // TODO: make the destination configurable.
-    let mut new_url =
-        Url::parse(&format!("http://localhost:8080")).unwrap();
+    let mut new_url = Url::parse(&format!("http://localhost:8080")).unwrap();
     new_url.set_path(req.uri().path());
     new_url.set_query(req.uri().query());
 

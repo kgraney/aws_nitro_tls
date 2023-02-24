@@ -8,7 +8,7 @@ use openssl::ssl::{
     ExtensionContext, Ssl, SslAcceptor, SslAcceptorBuilder, SslAlert, SslMethod, SslOptions,
     SslRef, SslVerifyMode, SslVersion,
 };
-use openssl::x509::{X509, X509Ref, X509StoreContext, X509StoreContextRef};
+use openssl::x509::{X509Ref, X509StoreContext, X509StoreContextRef, X509};
 use std::marker::PhantomPinned;
 use std::sync::Arc;
 use tracing::debug;
@@ -65,7 +65,9 @@ where
         acceptor.set_private_key(&private_key)?;
 
         let slice = fullchain.as_slice();
-        let (leaf, chain) = slice.split_first().ok_or(Error::NoCertificateKnown("No leaf certificate in chain".to_string()))?;
+        let (leaf, chain) = slice.split_first().ok_or(Error::NoCertificateKnown(
+            "No leaf certificate in chain".to_string(),
+        ))?;
         acceptor.set_certificate(leaf)?;
         for cert in chain {
             // TODO: Investigate why add_extra_chain_cert needs an X509 instead of an X509Ref.
